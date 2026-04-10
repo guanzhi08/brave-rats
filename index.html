@@ -48,6 +48,7 @@
             transform: translateZ(0); 
         }
         .card .num { font-size: 2.5rem; font-weight: 900; pointer-events: none; }
+        .card .emoji { font-size: 1.6rem; line-height: 1; pointer-events: none; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.25)); }
         .card .name { font-size: 0.85rem; font-weight: bold; border-bottom: 1px solid #ddd; width: 100%; text-align: center; pointer-events: none; }
         .card.red { border: 4px solid var(--red); }
         .card.blue { border: 4px solid var(--blue); }
@@ -162,14 +163,14 @@
 
 <script>
     const CARD_DATA = {
-        0: { name: "樂師", desc: "本回合平手。無視對方能力。下回合結算積分。" },
-        1: { name: "公主", desc: "若對手出王子(7)，你直接贏得比賽。" },
-        2: { name: "間諜", desc: "下一回合對方必須先出牌且牌面朝上。" },
-        3: { name: "刺客", desc: "數值小者贏。" },
-        4: { name: "大使", desc: "若此牌獲勝，視為贏得 2 個回合。" },
-        5: { name: "巫師", desc: "無視對手此回合的所有特殊能力。" },
-        6: { name: "將軍", desc: "你下一回合出的牌數值 +2。" },
-        7: { name: "王子", desc: "數值大者贏。除非對方出 0 或 1。" }
+        0: { name: "樂師", emoji: "🎵", desc: "本回合平手。無視對方能力。下回合結算積分。" },
+        1: { name: "公主", emoji: "👸", desc: "若對手出王子(7)，你直接贏得比賽。" },
+        2: { name: "間諜", emoji: "🕵️", desc: "下一回合對方必須先出牌且牌面朝上。" },
+        3: { name: "刺客", emoji: "🗡️", desc: "數值小者贏。" },
+        4: { name: "大使", emoji: "📜", desc: "若此牌獲勝，視為贏得 2 個回合。" },
+        5: { name: "巫師", emoji: "🧙", desc: "無視對手此回合的所有特殊能力。" },
+        6: { name: "將軍", emoji: "🛡️", desc: "你下一回合出的牌數值 +2。" },
+        7: { name: "王子", emoji: "🤴", desc: "數值大者贏。除非對方出 0 或 1。" }
     };
 
     let myHand = [0, 1, 2, 3, 4, 5, 6, 7], myScore = 0, oppScore = 0, drawPool = 0;
@@ -224,7 +225,7 @@
             const card = document.createElement('div');
             card.className = `card in-hand ${myColor}`;
             card.id = `card-${val}`;
-            card.innerHTML = `<div class="name">${CARD_DATA[val].name}</div><div class="num">${val}</div>`;
+            card.innerHTML = `<div class="name">${CARD_DATA[val].name}</div><div class="emoji">${CARD_DATA[val].emoji}</div><div class="num">${val}</div>`;
             
             const angle = -15 + (total > 1 ? (i * (30 / (total - 1))) : 15);
             const x = (i - (total - 1) / 2) * spacing;
@@ -292,7 +293,7 @@
         const oppColor = myColor === 'red' ? 'blue' : 'red';
         if (oppPlayedVal !== null && os.children.length === 0) {
             if (effects.mySpy) {
-                os.innerHTML = `<div class="card ${oppColor}"><div class="name">${CARD_DATA[oppPlayedVal].name}</div><div class="num">${oppPlayedVal}</div></div>`;
+                os.innerHTML = `<div class="card ${oppColor}"><div class="name">${CARD_DATA[oppPlayedVal].name}</div><div class="emoji">${CARD_DATA[oppPlayedVal].emoji}</div><div class="num">${oppPlayedVal}</div></div>`;
                 renderHand();
             } else os.innerHTML = `<div class="card back">?</div>`;
         }
@@ -305,7 +306,7 @@
     function resolveBattle() {
         const p1 = myPlayedVal, p2 = oppPlayedVal;
         const oppColor = myColor === 'red' ? 'blue' : 'red';
-        document.getElementById('opp-slot').innerHTML = `<div class="card ${oppColor}"><div class="name">${CARD_DATA[p2].name}</div><div class="num">${p2}</div></div>`;
+        document.getElementById('opp-slot').innerHTML = `<div class="card ${oppColor}"><div class="name">${CARD_DATA[p2].name}</div><div class="emoji">${CARD_DATA[p2].emoji}</div><div class="num">${p2}</div></div>`;
         document.getElementById('status-bar').innerText = `對手牌【${CARD_DATA[p2].name}】：${CARD_DATA[p2].desc}`;
 
         let v1 = p1 + (effects.myGen ? 2 : 0), v2 = p2 + (effects.oppGen ? 2 : 0);
