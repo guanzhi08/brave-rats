@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>鼠國稱王：層級修復版</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        :root { --red: #e74c3c; --blue: #3498db; --gold: #f1c40f; --bg: #2c3e50; }
+        * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+
+        body { 
+            font-family: -apple-system, system-ui, sans-serif; 
+            background: var(--bg); color: white; margin: 0; overflow: hidden; 
+            display: flex; flex-direction: column; height: 100vh; 
+        }
+
+        /* 介面層 */
+        #setup-layer { position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 2000; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
+        .room-box { background: rgba(255,255,255,0.1); padding: 25px; border-radius: 15px; width: 100%; max-width: 320px; text-align: center; }
+        input { padding: 15px; border-radius: 8px; border: none; width: 90%; font-size: 1.5rem; text-align: center; margin-bottom: 15px; }
+        button { padding: 12px 24px; border-radius: 8px; border: none; background: var(--gold); cursor: pointer; font-weight: bold; }
+
+        /* 看板 */
+        #info-panel { padding: 15px; background: rgba(0,0,0,0.4); z-index: 1000; position: relative; }
+        .score-board { display: flex; justify-content: space-around; font-size: 1.1rem; font-weight: bold; }
+        #status-bar { text-align: center; font-size: 0.8rem; color: #bbb; margin-top: 5px; min-height: 1rem; }
+        .spy-alert { color: var(--gold); animation: blink 1s infinite; }
+
+        /* 對戰區 - 確保他在中間且層級高於手牌 */
+        #battle-field { 
+            flex: 1; display: flex; justify-content: center; align-items: center; 
+            gap: 20px; position: relative; perspective: 1000px; z-index: 100;
+        }
+        .slot { 
+            width: 90px; height: 135px; border: 2px dashed rgba(255,255,255,0.2); 
+            border-radius: 10px; position: relative; display: flex; justify-content: center; align-items: center;
+        }
+
+        /* 卡牌基礎樣式 */
+        .card { 
+            width: 90px; height: 135px; background: white; color: #333; border-radius: 10px; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5); display: flex; flex-direction: column; 
+            align-items: center; justify-content: space-between; padding: 10px; 
+            position: absolute; will-change: transform; 
+            transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s;
+            transform: translateZ(0); 
+        }
+        .card .num { font-size: 2.5rem; font-weight: 900; pointer-events: none; }
+        .card .name { font-size: 0.85rem; font-weight: bold; border-bottom: 1px solid #ddd; width: 100%; text-align: center; pointer-events: none; }
+        .card.red { border: 4px solid var(--red); }
+        .card.blue { border: 4px solid var(--blue); }
+        .card.back { background: #34495e; color: transparent !important; border: 4px solid #7f8c8d; }
+
+        /* 關鍵：出牌時的層級調整 */
+        .card.pending { 
+            position: fixed; /* 脫離水平捲動容器的限制 */
+            left: 50%;
+            bottom: 250px;
+            margin-left: -45px; /* 寬度一半 */
+            z-index: 1500; 
+            transform: scale(1.2) translateZ(0) !important; 
+            box-shadow: 0 0 30px var(--gold);
+        }
+        .card.finalized { 
+            position: absolute;
+            transform: translate(0, 0) rotate(0deg) translateZ(0) !important; 
+            z-index: 50; 
+        }
+
+        /* 手牌水平滑動區 */
+        #hand-wrapper {
+            height: 180px; width: 100%; overflow-x: auto; overflow-y: visible;
+            display: flex; align-items: flex-end; justify-content: flex-start;
+            padding: 0 50px 20px 50px; touch-action: pan-x; -webkit-overflow-scrolling: touch;
+            background: rgba(0,0,0,0.2); border-top: 1px solid rgba(255,255,255,0.05);
+            z-index: 10;
+        }
+        #hand-wrapper::-webkit-scrollbar { display: none; }
+        
+        #hand-container { 
+            position: relative; display: flex; min-width: 100%; 
+            justify-content: center; align-items: flex-end; height: 100%;
+        }
+
+        /* 碰撞與擊飛動畫 */
+        @keyframes bump-right {
+            0% { transform: translateX(0) translateZ(0); }
+            20% { transform: translateX(-30px) translateZ(0); }
+            45% { transform: translateX(120px) scale(1.1) translateZ(0); }
+            100% { transform: translateX(0) translateZ(0); }
+        }
+        @keyframes bump-left {
+            0% { transform: translateX(0) translateZ(0); }
+            20% { transform: translateX(30px) translateZ(0); }
+            45% { transform: translateX(-120px) scale(1.1) translateZ(0); }
+            100% { transform: translateX(0) translateZ(0); }
+        }
+        @keyframes fly-out-right { 100% { transform: translate(500px, -100px) rotate(720deg) translateZ(0); opacity: 0; } }
+        @keyframes fly-out-left { 100% { transform: translate(-500px, -100px) rotate(-720deg) translateZ(0); opacity: 0; } }
+
+        .winner-bump-right { animation: bump-right 0.6s ease-out forwards; z-index: 1600 !important; }
+        .winner-bump-left { animation: bump-left 0.6s ease-out forwards; z-index: 1600 !important; }
+        .loser-fly-right { animation: fly-out-right 0.8s ease-in forwards; z-index: 1550 !important; }
+        .loser-fly-left { animation: fly-out-left 0.8s ease-in forwards; z-index: 1550 !important; }
+
+        /* 動作按鈕 */
+        #action-overlay { position: fixed; bottom: 200px; width: 100%; display: flex; justify-content: center; gap: 20px; opacity: 0; pointer-events: none; transition: 0.3s; z-index: 1800; }
+        #action-overlay.active { opacity: 1; pointer-events: auto; }
+        #ability-desc { height: 70px; background: rgba(0,0,0,0.85); padding: 12px; font-size: 0.9rem; text-align: center; color: var(--gold); z-index: 1000; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    </style>
+</head>
+<body>
+
+<div id="setup-layer">
+    <div id="step-1" class="room-box">
+        <h2 style="color:var(--gold); margin-top:0;">鼠國稱王</h2>
+        <input type="number" id="room-input" placeholder="4位房號" pattern="\d*">
+        <div style="display:flex; gap:10px; justify-content: center;">
+            <button onclick="initRoom('host')">建立</button>
+            <button onclick="initRoom('join')" style="background:white">加入</button>
+        </div>
+    </div>
+    <div id="step-2" class="room-box" style="display:none">
+        <p id="room-status">等待玩家中...</p>
+        <div id="qrcode-container"></div>
+    </div>
+</div>
+
+<div id="info-panel">
+    <div class="score-board">
+        <span id="player-score">我: 0</span>
+        <span id="game-status">連線成功</span>
+        <span id="opp-score">彼: 0</span>
+    </div>
+    <div id="status-bar"></div>
+</div>
+
+<div id="battle-field">
+    <div class="slot" id="my-slot"></div>
+    <div class="slot" id="opp-slot"></div>
+    <div id="action-overlay">
+        <button onclick="cancelSelection()" style="background:#555; color:white">反悔</button>
+        <button onclick="confirmSelection()" style="background:#27ae60; color:white; padding:12px 30px;">確認</button>
+    </div>
+</div>
+
+<div id="ability-desc">準備對決...</div>
+<div id="hand-wrapper">
+    <div id="hand-container"></div>
+</div>
+
+<script>
+    const CARD_DATA = {
+        0: { name: "樂師", desc: "本回合平手。無視對方能力。下回合結算累積積分。" },
+        1: { name: "公主", desc: "數值小者贏。若對手出王子(7)，你直接贏得比賽。" },
+        2: { name: "間諜", desc: "下一回合對方必須先出牌且牌面朝上。" },
+        3: { name: "刺客", desc: "數值小者贏。" },
+        4: { name: "大使", desc: "若此牌獲勝，視為贏得 2 個回合。" },
+        5: { name: "巫師", desc: "無視對手此回合的所有特殊能力。" },
+        6: { name: "將軍", desc: "你下一回合出的牌數值 +2。" },
+        7: { name: "王子", desc: "數值大者贏。除非對方出 0 或 1。" }
+    };
+
+    let myHand = [0, 1, 2, 3, 4, 5, 6, 7], myScore = 0, oppScore = 0, drawPool = 0;
+    let peer, conn, myColor, role, pendingVal = null, myPlayedVal = null, oppPlayedVal = null;
+    let effects = { myGen: false, oppGen: false, mySpy: false, oppSpy: false };
+
+    function initRoom(type) {
+        const code = document.getElementById('room-input').value;
+        if(!code) return;
+        role = type;
+        peer = new Peer("rats-fix-" + code + (role === 'host' ? 'A' : 'B'));
+        document.getElementById('step-1').style.display = 'none';
+        document.getElementById('step-2').style.display = 'block';
+        peer.on('open', () => {
+            if(role === 'host') new QRCode(document.getElementById("qrcode-container"), window.location.origin + window.location.pathname + "?room=" + code);
+            else { conn = peer.connect("rats-fix-" + code + 'A'); setupGame(); }
+        });
+        peer.on('connection', c => { conn = c; setupGame(); });
+    }
+
+    const urlRoom = new URLSearchParams(window.location.search).get('room');
+    if(urlRoom) { document.getElementById('room-input').value = urlRoom; setTimeout(() => initRoom('join'), 500); }
+
+    function setupGame() {
+        myColor = role === 'host' ? 'blue' : 'red';
+        document.getElementById('setup-layer').style.display = 'none';
+        conn.on('data', data => { if(data.type === 'play'){ oppPlayedVal = data.value; checkReveal(); }});
+        renderHand();
+    }
+
+    function renderHand() {
+        const container = document.getElementById('hand-container');
+        container.innerHTML = '';
+        const sb = document.getElementById('status-bar');
+        
+        if (effects.oppSpy && myPlayedVal === null) sb.innerHTML = `<span class="spy-alert">⚠️ 被間諜監控中！請先公開出牌</span>`;
+        else if (effects.mySpy && oppPlayedVal === null) sb.innerHTML = `<span class="spy-alert">🔍 間諜生效：等對手先翻牌</span>`;
+        else sb.innerText = (effects.myGen ? "🔥 將軍加成 (+2)" : "");
+
+        const total = myHand.length;
+        const spacing = Math.min(65, (window.innerWidth - 80) / Math.max(1, total - 1));
+        container.style.width = (total * spacing + 120) + "px";
+
+        myHand.forEach((val, i) => {
+            const card = document.createElement('div');
+            card.className = `card in-hand ${myColor}`;
+            card.id = `card-${val}`;
+            card.innerHTML = `<div class="name">${CARD_DATA[val].name}</div><div class="num">${val}</div>`;
+            
+            const angle = -15 + (total > 1 ? (i * (30 / (total - 1))) : 15);
+            const x = (i - (total - 1) / 2) * spacing;
+            card.style.transform = `translateX(${x}px) rotate(${angle}deg) translateZ(0)`;
+            
+            card.onclick = (e) => {
+                if (myPlayedVal !== null || (effects.mySpy && oppPlayedVal === null)) return;
+                
+                // 清除之前的選取
+                if (pendingVal !== null) {
+                    const prev = document.getElementById(`card-${pendingVal}`);
+                    if (prev) prev.classList.remove('pending');
+                }
+
+                pendingVal = val;
+                // 加入 pending 類別，它會套用 fixed 定位，讓它出現在螢幕中央
+                card.classList.add('pending');
+                document.getElementById('action-overlay').classList.add('active');
+                document.getElementById('ability-desc').innerHTML = `<b>【${CARD_DATA[val].name}】</b> ${CARD_DATA[val].desc}`;
+            };
+            container.appendChild(card);
+        });
+    }
+
+    function cancelSelection() {
+        pendingVal = null;
+        document.getElementById('action-overlay').classList.remove('active');
+        renderHand(); // 重繪手牌，讓那張牌回到容器裡
+    }
+
+    function confirmSelection() {
+        myPlayedVal = pendingVal;
+        const el = document.getElementById(`card-${myPlayedVal}`);
+        
+        // 核心修改：確認出牌後，將元素真正移入對戰 slot 中
+        el.className = `card finalized ${myColor}`;
+        document.getElementById('my-slot').appendChild(el);
+        
+        myHand = myHand.filter(v => v !== myPlayedVal);
+        document.getElementById('action-overlay').classList.remove('active');
+        conn.send({ type: 'play', value: myPlayedVal });
+        pendingVal = null;
+        checkReveal();
+        renderHand();
+    }
+
+    function checkReveal() {
+        const os = document.getElementById('opp-slot');
+        const oppColor = myColor === 'red' ? 'blue' : 'red';
+        if (oppPlayedVal !== null && os.children.length === 0) {
+            if (effects.mySpy) {
+                os.innerHTML = `<div class="card ${oppColor}"><div class="name">${CARD_DATA[oppPlayedVal].name}</div><div class="num">${oppPlayedVal}</div></div>`;
+                renderHand();
+            } else os.innerHTML = `<div class="card back">?</div>`;
+        }
+        if (myPlayedVal !== null && oppPlayedVal !== null) {
+            document.getElementById('game-status').innerText = "判定中...";
+            setTimeout(resolveBattle, 1000);
+        }
+    }
+
+    function resolveBattle() {
+        const p1 = myPlayedVal, p2 = oppPlayedVal;
+        const oppColor = myColor === 'red' ? 'blue' : 'red';
+        document.getElementById('opp-slot').innerHTML = `<div class="card ${oppColor}"><div class="name">${CARD_DATA[p2].name}</div><div class="num">${p2}</div></div>`;
+
+        let v1 = p1 + (effects.myGen ? 2 : 0), v2 = p2 + (effects.oppGen ? 2 : 0);
+        let win = 0; 
+        const p1_ign = (p1 === 5), p2_ign = (p2 === 5);
+
+        if ((p1 === 0 && !p2_ign) || (p2 === 0 && !p1_ign)) win = 0;
+        else if (p1 === 1 && p2 === 7 && !p2_ign) win = 1;
+        else if (p2 === 1 && p1 === 7 && !p1_ign) win = -1;
+        else {
+            const smallWin = (p1 === 1 && !p2_ign) || (p1 === 3 && !p2_ign) || (p2 === 1 && !p1_ign) || (p2 === 3 && !p1_ign);
+            if (v1 === v2) win = 0;
+            else if (smallWin) win = (v1 < v2) ? 1 : -1;
+            else win = (v1 > v2) ? 1 : -1;
+        }
+
+        const myCard = document.querySelector('#my-slot .card');
+        const oppCard = document.querySelector('#opp-slot .card');
+        
+        setTimeout(() => {
+            if (win === 1) {
+                myCard.offsetHeight; 
+                myCard.classList.add('winner-bump-right');
+                oppCard.classList.add('loser-fly-right');
+            } else if (win === -1) {
+                oppCard.offsetHeight;
+                oppCard.classList.add('winner-bump-left');
+                myCard.classList.add('loser-fly-left');
+            }
+        }, 100);
+
+        let pts = 1 + drawPool;
+        if (win === 1) { if (p1 === 4 && !p2_ign) pts++; myScore += pts; drawPool = 0; }
+        else if (win === -1) { if (p2 === 4 && !p1_ign) pts++; oppScore += pts; drawPool = 0; }
+        else drawPool++;
+
+        effects.myGen = (p1 === 6 && !p2_ign); effects.oppGen = (p2 === 6 && !p1_ign);
+        effects.mySpy = (p1 === 2 && !p2_ign); effects.oppSpy = (p2 === 2 && !p1_ign);
+
+        setTimeout(() => {
+            document.getElementById('player-score').innerText = `我: ${myScore}`;
+            document.getElementById('opp-score').innerText = `彼: ${oppScore}`;
+            if (myScore >= 4 || oppScore >= 4) { alert(myScore >= 4 ? "贏啦！" : "輸了..."); location.reload(); }
+            else nextRound();
+        }, 2200);
+    }
+
+    function nextRound() {
+        myPlayedVal = null; oppPlayedVal = null;
+        document.getElementById('my-slot').innerHTML = "";
+        document.getElementById('opp-slot').innerHTML = "";
+        document.getElementById('game-status').innerText = "請出牌";
+        renderHand();
+    }
+</script>
+</body>
+</html>
