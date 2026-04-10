@@ -55,13 +55,10 @@
         .card.back { background: #34495e; color: transparent !important; border: 4px solid #7f8c8d; }
 
         /* 關鍵：出牌時的層級調整 */
-        .card.pending { 
-            position: fixed; /* 脫離水平捲動容器的限制 */
-            left: 50%;
-            bottom: 55%;
-            margin-left: -45px; /* 寬度一半 */
-            z-index: 9999 !important; 
-            transform: scale(1.2) translateZ(0) !important; 
+        .card.in-slot { 
+            position: absolute;
+            transform: translate(0, 0) rotate(0deg) translateZ(0) !important; 
+            z-index: 150 !important;
             box-shadow: 0 0 30px var(--gold);
         }
         .card.finalized { 
@@ -81,6 +78,7 @@
             display: flex; align-items: flex-end; justify-content: flex-start;
             padding: 10px 50px 15px 50px; touch-action: pan-x; -webkit-overflow-scrolling: touch;
             background: rgba(0,0,0,0.2); border-top: 1px solid rgba(255,255,255,0.05);
+            position: relative; bottom: 68px;
             z-index: 10;
         }
         #hand-wrapper::-webkit-scrollbar { display: none; }
@@ -109,9 +107,9 @@
         @keyframes fly-out-right { 100% { transform: translate(500px, -100px) rotate(720deg) translateZ(0); opacity: 0; } }
         @keyframes fly-out-left { 100% { transform: translate(-500px, -100px) rotate(-720deg) translateZ(0); opacity: 0; } }
         @keyframes play-up-from-bottom {
-            0% { transform: translateY(190px) scale(0.85) translateZ(0); opacity: 0.25; }
-            70% { transform: translateY(-12px) scale(1.03) translateZ(0); opacity: 1; }
-            100% { transform: translateY(0) scale(1) translateZ(0); opacity: 1; }
+            0% { transform: translate(0, 0) scale(0.85) translateZ(0); opacity: 0.25; }
+            70% { transform: translate(0, 0) scale(1.03) translateZ(0); opacity: 1; }
+            100% { transform: translate(0, 0) scale(1) translateZ(0); opacity: 1; }
         }
 
         .winner-bump-right { animation: bump-right 0.6s ease-out forwards; z-index: 1600 !important; }
@@ -120,9 +118,9 @@
         .loser-fly-left { animation: fly-out-left 0.8s ease-in forwards; z-index: 1550 !important; }
 
         /* 動作按鈕 */
-        #action-overlay { position: fixed; bottom: 54px; width: 100%; display: flex; justify-content: center; gap: 20px; opacity: 0; pointer-events: none; transition: 0.3s; z-index: 1800; }
+        #action-overlay { position: fixed; bottom: 122px; width: 100%; display: flex; justify-content: center; gap: 20px; opacity: 0; pointer-events: none; transition: 0.3s; z-index: 1800; }
         #action-overlay.active { opacity: 1; pointer-events: auto; }
-        #ability-desc { height: 46px; background: rgba(0,0,0,0.85); padding: 8px 12px; font-size: 0.85rem; text-align: center; color: var(--gold); z-index: 1000; }
+        #ability-desc { height: 46px; background: rgba(0,0,0,0.85); padding: 8px 12px; font-size: 0.85rem; text-align: center; color: var(--gold); position: relative; bottom: 68px; z-index: 1000; }
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
     </style>
 </head>
@@ -256,12 +254,16 @@
                 // 清除之前的選取
                 if (pendingVal !== null) {
                     const prev = document.getElementById(`card-${pendingVal}`);
-                    if (prev) prev.classList.remove('pending');
+                    if (prev) {
+                        prev.classList.remove('in-slot');
+                        document.getElementById('hand-container').appendChild(prev);
+                    }
                 }
 
                 pendingVal = val;
-                // 加入 pending 類別，它會套用 fixed 定位，讓它出現在螢幕中央
-                card.classList.add('pending');
+                // 直接移到 my-slot 虛線框中
+                card.classList.add('in-slot');
+                document.getElementById('my-slot').appendChild(card);
                 document.getElementById('action-overlay').classList.add('active');
                 document.getElementById('ability-desc').innerHTML = `<b>【${CARD_DATA[val].name}】</b> ${CARD_DATA[val].desc}`;
             };
@@ -270,18 +272,24 @@
     }
 
     function cancelSelection() {
+        if (pendingVal !== null) {
+            const el = document.getElementById(`card-${pendingVal}`);
+            if (el) {
+                el.classList.remove('in-slot');
+                document.getElementById('hand-container').appendChild(el);
+            }
+        }
         pendingVal = null;
         document.getElementById('action-overlay').classList.remove('active');
-        renderHand(); // 重繪手牌，讓那張牌回到容器裡
     }
 
     function confirmSelection() {
         myPlayedVal = pendingVal;
         const el = document.getElementById(`card-${myPlayedVal}`);
         
-        // 核心修改：確認出牌後，將元素真正移入對戰 slot 中
+        // 確認出牌後，將選取狀態改為已出牌
+        el.classList.remove('in-slot');
         el.className = `card finalized ${myColor}`;
-        document.getElementById('my-slot').appendChild(el);
         el.classList.add('play-up');
         el.addEventListener('animationend', () => el.classList.remove('play-up'), { once: true });
         
