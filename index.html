@@ -58,9 +58,9 @@
         .card.pending { 
             position: fixed; /* 脫離水平捲動容器的限制 */
             left: 50%;
-            bottom: 250px;
+            bottom: 55%;
             margin-left: -45px; /* 寬度一半 */
-            z-index: 1500; 
+            z-index: 9999 !important; 
             transform: scale(1.2) translateZ(0) !important; 
             box-shadow: 0 0 30px var(--gold);
         }
@@ -69,15 +69,17 @@
             transform: translate(0, 0) rotate(0deg) translateZ(0) !important; 
             z-index: 50; 
         }
+        #opp-slot .card.finalized { z-index: 50 !important; }
+        #my-slot .card.finalized { z-index: 100 !important; }
         .card.finalized.play-up {
             animation: play-up-from-bottom 0.35s cubic-bezier(0.18, 0.88, 0.22, 1.15) forwards;
         }
 
         /* 手牌水平滑動區 */
         #hand-wrapper {
-            height: 180px; width: 100%; overflow-x: auto; overflow-y: visible;
+            height: 160px; width: 100%; overflow-x: auto; overflow-y: visible;
             display: flex; align-items: flex-end; justify-content: flex-start;
-            padding: 0 50px 20px 50px; touch-action: pan-x; -webkit-overflow-scrolling: touch;
+            padding: 10px 50px 15px 50px; touch-action: pan-x; -webkit-overflow-scrolling: touch;
             background: rgba(0,0,0,0.2); border-top: 1px solid rgba(255,255,255,0.05);
             z-index: 10;
         }
@@ -87,6 +89,9 @@
             position: relative; display: flex; min-width: 100%; 
             justify-content: center; align-items: flex-end; height: 100%;
         }
+
+        /* 對方卡牌層級 */
+        #opp-slot .card { z-index: 300; }
 
         /* 碰撞與擊飛動畫 */
         @keyframes bump-right {
@@ -115,7 +120,7 @@
         .loser-fly-left { animation: fly-out-left 0.8s ease-in forwards; z-index: 1550 !important; }
 
         /* 動作按鈕 */
-        #action-overlay { position: fixed; bottom: 200px; width: 100%; display: flex; justify-content: center; gap: 20px; opacity: 0; pointer-events: none; transition: 0.3s; z-index: 1800; }
+        #action-overlay { position: fixed; bottom: 54px; width: 100%; display: flex; justify-content: center; gap: 20px; opacity: 0; pointer-events: none; transition: 0.3s; z-index: 1800; }
         #action-overlay.active { opacity: 1; pointer-events: auto; }
         #ability-desc { height: 46px; background: rgba(0,0,0,0.85); padding: 8px 12px; font-size: 0.85rem; text-align: center; color: var(--gold); z-index: 1000; }
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
