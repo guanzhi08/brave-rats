@@ -68,6 +68,9 @@
             transform: translate(0, 0) rotate(0deg) translateZ(0) !important; 
             z-index: 50; 
         }
+        .card.finalized.play-up {
+            animation: play-up-from-bottom 0.35s cubic-bezier(0.18, 0.88, 0.22, 1.15) forwards;
+        }
 
         /* 手牌水平滑動區 */
         #hand-wrapper {
@@ -99,6 +102,11 @@
         }
         @keyframes fly-out-right { 100% { transform: translate(500px, -100px) rotate(720deg) translateZ(0); opacity: 0; } }
         @keyframes fly-out-left { 100% { transform: translate(-500px, -100px) rotate(-720deg) translateZ(0); opacity: 0; } }
+        @keyframes play-up-from-bottom {
+            0% { transform: translateY(190px) scale(0.85) translateZ(0); opacity: 0.25; }
+            70% { transform: translateY(-12px) scale(1.03) translateZ(0); opacity: 1; }
+            100% { transform: translateY(0) scale(1) translateZ(0); opacity: 1; }
+        }
 
         .winner-bump-right { animation: bump-right 0.6s ease-out forwards; z-index: 1600 !important; }
         .winner-bump-left { animation: bump-left 0.6s ease-out forwards; z-index: 1600 !important; }
@@ -108,7 +116,7 @@
         /* 動作按鈕 */
         #action-overlay { position: fixed; bottom: 200px; width: 100%; display: flex; justify-content: center; gap: 20px; opacity: 0; pointer-events: none; transition: 0.3s; z-index: 1800; }
         #action-overlay.active { opacity: 1; pointer-events: auto; }
-        #ability-desc { height: 70px; background: rgba(0,0,0,0.85); padding: 12px; font-size: 0.9rem; text-align: center; color: var(--gold); z-index: 1000; }
+        #ability-desc { height: 46px; background: rgba(0,0,0,0.85); padding: 8px 12px; font-size: 0.85rem; text-align: center; color: var(--gold); z-index: 1000; }
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
     </style>
 </head>
@@ -131,9 +139,9 @@
 
 <div id="info-panel">
     <div class="score-board">
-        <span id="player-score">我: 0</span>
+        <span id="player-score">我方: 0</span>
         <span id="game-status">連線成功</span>
-        <span id="opp-score">彼: 0</span>
+        <span id="opp-score">對方: 0</span>
     </div>
     <div id="status-bar"></div>
 </div>
@@ -154,7 +162,7 @@
 
 <script>
     const CARD_DATA = {
-        0: { name: "樂師", desc: "本回合平手。無視對方能力。下回合結算累積積分。" },
+        0: { name: "樂師", desc: "本回合平手。無視對方能力。下回合結算積分。" },
         1: { name: "公主", desc: "若對手出王子(7)，你直接贏得比賽。" },
         2: { name: "間諜", desc: "下一回合對方必須先出牌且牌面朝上。" },
         3: { name: "刺客", desc: "數值小者贏。" },
@@ -196,10 +204,17 @@
         const container = document.getElementById('hand-container');
         container.innerHTML = '';
         const sb = document.getElementById('status-bar');
-        
-        if (effects.oppSpy && myPlayedVal === null) sb.innerHTML = `<span class="spy-alert">⚠️ 被間諜監控中！請先公開出牌</span>`;
-        else if (effects.mySpy && oppPlayedVal === null) sb.innerHTML = `<span class="spy-alert">🔍 間諜生效：等對手先翻牌</span>`;
-        else sb.innerText = (effects.myGen ? "🔥 將軍加成 (+2)" : "");
+
+        const statusMsgs = [];
+        if (effects.oppSpy && myPlayedVal === null) statusMsgs.push(`<span class="spy-alert">⚠️ 被間諜監控中！請先公開出牌</span>`);
+        else if (effects.mySpy && oppPlayedVal === null) statusMsgs.push(`<span class="spy-alert">🔍 間諜生效：等對手先翻牌</span>`);
+        else if (effects.myGen) statusMsgs.push("🔥 將軍加成 (+2)");
+
+        if (effects.mySpy && oppPlayedVal !== null) {
+            statusMsgs.push(`對手已出【${CARD_DATA[oppPlayedVal].name}】：${CARD_DATA[oppPlayedVal].desc}`);
+        }
+
+        sb.innerHTML = statusMsgs.join(" ｜ ");
 
         const total = myHand.length;
         const spacing = Math.min(65, (window.innerWidth - 80) / Math.max(1, total - 1));
@@ -214,6 +229,20 @@
             const angle = -15 + (total > 1 ? (i * (30 / (total - 1))) : 15);
             const x = (i - (total - 1) / 2) * spacing;
             card.style.transform = `translateX(${x}px) rotate(${angle}deg) translateZ(0)`;
+            card.style.opacity = '0';
+
+            card.animate(
+                [
+                    { transform: `translateX(${x}px) translateY(90px) rotate(${angle * 0.35}deg) scale(0.86)`, opacity: 0 },
+                    { transform: `translateX(${x}px) rotate(${angle}deg) translateZ(0)`, opacity: 1 }
+                ],
+                {
+                    duration: 430,
+                    delay: i * 55,
+                    fill: 'forwards',
+                    easing: 'cubic-bezier(0.16, 0.84, 0.2, 1)'
+                }
+            );
             
             card.onclick = (e) => {
                 if (myPlayedVal !== null || (effects.mySpy && oppPlayedVal === null)) return;
@@ -247,6 +276,8 @@
         // 核心修改：確認出牌後，將元素真正移入對戰 slot 中
         el.className = `card finalized ${myColor}`;
         document.getElementById('my-slot').appendChild(el);
+        el.classList.add('play-up');
+        el.addEventListener('animationend', () => el.classList.remove('play-up'), { once: true });
         
         myHand = myHand.filter(v => v !== myPlayedVal);
         document.getElementById('action-overlay').classList.remove('active');
@@ -275,6 +306,7 @@
         const p1 = myPlayedVal, p2 = oppPlayedVal;
         const oppColor = myColor === 'red' ? 'blue' : 'red';
         document.getElementById('opp-slot').innerHTML = `<div class="card ${oppColor}"><div class="name">${CARD_DATA[p2].name}</div><div class="num">${p2}</div></div>`;
+        document.getElementById('status-bar').innerText = `對手牌【${CARD_DATA[p2].name}】：${CARD_DATA[p2].desc}`;
 
         let v1 = p1 + (effects.myGen ? 2 : 0), v2 = p2 + (effects.oppGen ? 2 : 0);
         let win = 0; 
@@ -314,8 +346,8 @@
         effects.mySpy = (p1 === 2 && !p2_ign); effects.oppSpy = (p2 === 2 && !p1_ign);
 
         setTimeout(() => {
-            document.getElementById('player-score').innerText = `我: ${myScore}`;
-            document.getElementById('opp-score').innerText = `彼: ${oppScore}`;
+            document.getElementById('player-score').innerText = `我方: ${myScore}`;
+            document.getElementById('opp-score').innerText = `對手: ${oppScore}`;
             if (myScore >= 4 || oppScore >= 4) { alert(myScore >= 4 ? "贏啦！" : "輸了..."); location.reload(); }
             else nextRound();
         }, 2200);
