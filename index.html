@@ -179,7 +179,7 @@
 <div id="setup-layer">
     <div id="step-1" class="room-box">
         <h2 style="color:var(--gold); margin-top:0;">鼠國稱王</h2>
-        <input type="number" id="room-input" placeholder="4位房號" pattern="\d*">
+        <input type="number" id="room-input" placeholder="4位數字房號" pattern="\d*">
         <div style="display:flex; gap:10px; justify-content: center;">
             <button onclick="initRoom('host')">建立</button>
             <button onclick="initRoom('join')" style="background:white">加入</button>
@@ -248,7 +248,7 @@
         1: { name: "公主", emoji: "👸", desc: "若對手出王子(7)，你直接贏得比賽。" },
         2: { name: "間諜", emoji: "🕵️", desc: "下一回合對方必須先出牌且牌面朝上。" },
         3: { name: "刺客", emoji: "🗡️", desc: "數值小者贏。" },
-        4: { name: "大使", emoji: "📜", desc: "若此牌獲勝，視為贏得 2 個回合。" },
+        4: { name: "大使", emoji: "🤵‍♀️", desc: "若此牌獲勝，視為贏得 2 個回合。" },
         5: { name: "巫師", emoji: "🧙", desc: "無視對手此回合的所有特殊能力。" },
         6: { name: "將軍", emoji: "🛡️", desc: "你下一回合出的牌數值 +2。" },
         7: { name: "王子", emoji: "🤴", desc: "數值大者贏。除非對方出 0 或 1。" }
@@ -281,23 +281,27 @@
         document.getElementById('history-panel').classList.remove('active');
     }
 
-    function getMatrixOutcome(my, opp) {
-        let win = 0;
-        let matchEnd = 0;
-        const p1_ign = (my === 5), p2_ign = (opp === 5);
+    // 共用勝負判斷核心：p1/p2 為原始牌值（用於能力判定），v1/v2 為實際比較值（含將軍加成）
+    function resolveOutcome(p1, p2, v1, v2) {
+        let win = 0, matchEnd = 0;
+        const p1_ign = (p1 === 5), p2_ign = (p2 === 5);
 
-        if (my === opp) win = 0;
-        else if ((my === 0 && !p2_ign) || (opp === 0 && !p1_ign)) win = 0;
-        else if (my === 1 && opp === 7 && !p2_ign) { win = 1; matchEnd = 1; }
-        else if (opp === 1 && my === 7 && !p1_ign) { win = -1; matchEnd = -1; }
+        if (p1 === p2) win = 0;
+        else if ((p1 === 0 && !p2_ign) || (p2 === 0 && !p1_ign)) win = 0;
+        else if (p1 === 1 && p2 === 7 && !p2_ign) { win = 1; matchEnd = 1; }
+        else if (p2 === 1 && p1 === 7 && !p1_ign) { win = -1; matchEnd = -1; }
         else {
-            const smallWin = (my === 3 && !p2_ign) || (opp === 3 && !p1_ign);
-            if (my === opp) win = 0;
-            else if (smallWin) win = (my < opp) ? 1 : -1;
-            else win = (my > opp) ? 1 : -1;
+            const smallWin = (p1 === 3 && !p2_ign) || (p2 === 3 && !p1_ign);
+            if (v1 === v2) win = 0;
+            else if (smallWin) win = (v1 < v2) ? 1 : -1;
+            else win = (v1 > v2) ? 1 : -1;
         }
+        return { win, matchEnd };
+    }
 
-        return { win, matchEnd, delayed: win === 0 };
+    function getMatrixOutcome(my, opp) {
+        // 對照表不考慮將軍加成，v1/v2 傳原始牌值
+        return resolveOutcome(my, opp, my, opp);
     }
 
     function renderMatrixTable() {
@@ -478,21 +482,8 @@
         document.getElementById('opp-slot').innerHTML = `<div class="card ${oppColor}"><div class="name">${CARD_DATA[p2].name}</div><div class="emoji">${CARD_DATA[p2].emoji}</div><div class="num">${p2}</div></div>`;
         document.getElementById('status-bar').innerText = `對手牌【${CARD_DATA[p2].name}】：${CARD_DATA[p2].desc}`;
 
-        let v1 = p1 + (effects.myGen ? 2 : 0), v2 = p2 + (effects.oppGen ? 2 : 0);
-        let win = 0; 
-        const p1_ign = (p1 === 5), p2_ign = (p2 === 5);
-
-        let princessMatchWin = 0;
-        if (p1 === p2) win = 0;
-        else if ((p1 === 0 && !p2_ign) || (p2 === 0 && !p1_ign)) win = 0;
-        else if (p1 === 1 && p2 === 7 && !p2_ign) { win = 1; princessMatchWin = 1; }
-        else if (p2 === 1 && p1 === 7 && !p1_ign) { win = -1; princessMatchWin = -1; }
-        else {
-            const smallWin = (p1 === 3 && !p2_ign) || (p2 === 3 && !p1_ign);
-            if (v1 === v2) win = 0;
-            else if (smallWin) win = (v1 < v2) ? 1 : -1;
-            else win = (v1 > v2) ? 1 : -1;
-        }
+        const v1 = p1 + (effects.myGen ? 2 : 0), v2 = p2 + (effects.oppGen ? 2 : 0);
+        const { win, matchEnd: princessMatchWin } = resolveOutcome(p1, p2, v1, v2);
 
         roundHistory.push({
             my: p1,
