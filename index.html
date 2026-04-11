@@ -141,6 +141,8 @@
             display: flex; justify-content: space-between; gap: 10px; padding: 8px 0;
             border-bottom: 1px dashed rgba(255,255,255,0.2);
         }
+        .history-result.win { color: #2ecc71; font-weight: bold; }
+        .history-result.lose { color: #e74c3c; font-weight: bold; }
 
         /* 勝負對照表 */
         #matrix-btn {
@@ -260,9 +262,10 @@
             list.innerHTML = '<div style="color:#bbb; text-align:center; padding:14px 0;">目前還沒有回合紀錄</div>';
             return;
         }
-        list.innerHTML = roundHistory.map((r, i) => (
-            `<div class="history-row"><span>R${i + 1}｜我:${CARD_DATA[r.my].name}(${r.my})</span><span>對:${CARD_DATA[r.opp].name}(${r.opp})｜${r.result}</span></div>`
-        )).join('');
+        list.innerHTML = roundHistory.map((r, i) => {
+            const resultClass = r.result === '我方勝' ? 'win' : (r.result === '對方勝' ? 'lose' : '');
+            return `<div class="history-row"><span>R${i + 1}｜我:${CARD_DATA[r.my].name}(${r.my})</span><span>對:${CARD_DATA[r.opp].name}(${r.opp})｜<span class="history-result ${resultClass}">${r.result}</span></span></div>`;
+        }).join('');
     }
 
     function toggleHistory() {
@@ -275,27 +278,31 @@
         document.getElementById('history-panel').classList.remove('active');
     }
 
-    // 共用勝負判斷核心：p1/p2 為原始牌值（用於能力判定），v1/v2 為實際比較值（含將軍加成）
-    function resolveOutcome(p1, p2, v1, v2) {
-        let win = 0, matchEnd = 0;
-        const p1_ign = (p1 === 5), p2_ign = (p2 === 5);
-
-        if (p1 === p2) win = 0;
-        else if ((p1 === 0 && !p2_ign) || (p2 === 0 && !p1_ign)) win = 0;
-        else if (p1 === 1 && p2 === 7 && !p2_ign) { win = 1; matchEnd = 1; }
-        else if (p2 === 1 && p1 === 7 && !p1_ign) { win = -1; matchEnd = -1; }
-        else {
-            const smallWin = (p1 === 3 && !p2_ign) || (p2 === 3 && !p1_ign);
-            if (v1 === v2) win = 0;
-            else if (smallWin) win = (v1 < v2) ? 1 : -1;
-            else win = (v1 > v2) ? 1 : -1;
-        }
-        return { win, matchEnd };
+    function revealHistoryFromMatrix() {
+        closeMatrix();
+        setTimeout(() => {
+            document.getElementById('history-panel').classList.add('active');
+            renderHistory();
+        }, 120);
     }
 
     function getMatrixOutcome(my, opp) {
-        // 對照表不考慮將軍加成，v1/v2 傳原始牌值
-        return resolveOutcome(my, opp, my, opp);
+        let win = 0;
+        let matchEnd = 0;
+        const p1_ign = (my === 5), p2_ign = (opp === 5);
+
+        if (my === opp) win = 0;
+        else if ((my === 0 && !p2_ign) || (opp === 0 && !p1_ign)) win = 0;
+        else if (my === 1 && opp === 7 && !p2_ign) { win = 1; matchEnd = 1; }
+        else if (opp === 1 && my === 7 && !p1_ign) { win = -1; matchEnd = -1; }
+        else {
+            const smallWin = (my === 3 && !p2_ign) || (opp === 3 && !p1_ign);
+            if (my === opp) win = 0;
+            else if (smallWin) win = (my < opp) ? 1 : -1;
+            else win = (my > opp) ? 1 : -1;
+        }
+
+        return { win, matchEnd, delayed: win === 0 };
     }
 
     function renderMatrixTable() {
@@ -317,7 +324,11 @@
                 else if (out.matchEnd === -1) { cls = 'm-lose'; text = '結束'; }
                 else if (out.win === 1) { cls = 'm-win'; text = '我方'; }
                 else if (out.win === -1) { cls = 'm-lose'; text = '對方'; }
-                html += `<td class="${cls}">${text}</td>`;
+                const isPrinceVsPrinceDelay = (my === 7 && opp === 7 && text === '暫緩');
+                const actionAttrs = isPrinceVsPrinceDelay
+                    ? ' onclick="revealHistoryFromMatrix()" style="text-decoration:none;"'
+                    : '';
+                html += `<td class="${cls}"${actionAttrs}>${text}</td>`;
             }
             html += '</tr>';
         }
@@ -476,8 +487,21 @@
         document.getElementById('opp-slot').innerHTML = `<div class="card ${oppColor}"><div class="name">${CARD_DATA[p2].name}</div><div class="emoji">${CARD_DATA[p2].emoji}</div><div class="num">${p2}</div></div>`;
         document.getElementById('status-bar').innerText = `對手牌【${CARD_DATA[p2].name}】：${CARD_DATA[p2].desc}`;
 
-        const v1 = p1 + (effects.myGen ? 2 : 0), v2 = p2 + (effects.oppGen ? 2 : 0);
-        const { win, matchEnd: princessMatchWin } = resolveOutcome(p1, p2, v1, v2);
+        let v1 = p1 + (effects.myGen ? 2 : 0), v2 = p2 + (effects.oppGen ? 2 : 0);
+        let win = 0; 
+        const p1_ign = (p1 === 5), p2_ign = (p2 === 5);
+
+        let princessMatchWin = 0;
+        if (p1 === p2) win = 0;
+        else if ((p1 === 0 && !p2_ign) || (p2 === 0 && !p1_ign)) win = 0;
+        else if (p1 === 1 && p2 === 7 && !p2_ign) { win = 1; princessMatchWin = 1; }
+        else if (p2 === 1 && p1 === 7 && !p1_ign) { win = -1; princessMatchWin = -1; }
+        else {
+            const smallWin = (p1 === 3 && !p2_ign) || (p2 === 3 && !p1_ign);
+            if (v1 === v2) win = 0;
+            else if (smallWin) win = (v1 < v2) ? 1 : -1;
+            else win = (v1 > v2) ? 1 : -1;
+        }
 
         roundHistory.push({
             my: p1,
@@ -536,26 +560,6 @@
     }
 
     renderMatrixTable();
-
-    // 長按 #game-status 超過 2 秒開啟出牌紀錄
-    (function () {
-        let _timer = null;
-        const el = document.getElementById('game-status');
-        function start(e) {
-            _timer = setTimeout(() => { _timer = null; toggleHistory(); }, 2000);
-        }
-        function cancel() {
-            if (_timer) { clearTimeout(_timer); _timer = null; }
-        }
-        el.addEventListener('mousedown',   start);
-        el.addEventListener('touchstart',  start,  { passive: true });
-        el.addEventListener('mouseup',     cancel);
-        el.addEventListener('mouseleave',  cancel);
-        el.addEventListener('touchend',    cancel);
-        el.addEventListener('touchcancel', cancel);
-        // 防止長按觸發選取文字
-        el.addEventListener('contextmenu', e => e.preventDefault());
-    })();
 </script>
 </body>
 </html>
