@@ -127,6 +127,25 @@
         #gameover-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.88); z-index: 4000; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 24px; }
         #gameover-overlay.active { display: flex; }
         #gameover-msg { font-size: 3.5rem; font-weight: 900; color: var(--gold); text-shadow: 0 0 30px var(--gold); }
+
+        /* 秘密按鈕 + 出牌紀錄 */
+        #history-secret-btn {
+            position: fixed; top: 6px; right: 6px; width: 34px; height: 34px; border-radius: 50%;
+            background: transparent; color: transparent; border: none; z-index: 3900;
+            font-size: 0; padding: 0; opacity: 0;
+        }
+        #history-panel { position: fixed; inset: 0; background: rgba(0,0,0,0.86); z-index: 3950; display: none; }
+        #history-panel.active { display: flex; }
+        #history-box {
+            margin: auto; width: min(92vw, 460px); max-height: 76vh; overflow: auto;
+            background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 14px; padding: 14px;
+        }
+        #history-list { font-size: 0.95rem; }
+        .history-row {
+            display: flex; justify-content: space-between; gap: 10px; padding: 8px 0;
+            border-bottom: 1px dashed rgba(255,255,255,0.2);
+        }
     </style>
 </head>
 <body>
@@ -153,6 +172,17 @@
         <span id="opp-score">對方: 0</span>
     </div>
     <div id="status-bar"></div>
+</div>
+
+<button id="history-secret-btn" onclick="toggleHistory()" aria-label="查看出牌紀錄"></button>
+<div id="history-panel" onclick="closeHistory()">
+    <div id="history-box" onclick="event.stopPropagation()">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <b style="color:var(--gold)">出牌紀錄</b>
+            <button onclick="closeHistory()" style="background:#555; color:white; padding:8px 12px;">關閉</button>
+        </div>
+        <div id="history-list"></div>
+    </div>
 </div>
 
 <div id="battle-field">
@@ -187,8 +217,31 @@
     };
 
     let myHand = [0, 1, 2, 3, 4, 5, 6, 7], myScore = 0, oppScore = 0, drawPool = 0;
+    let roundHistory = [];
     let peer, conn, myColor, role, pendingVal = null, myPlayedVal = null, oppPlayedVal = null;
     let effects = { myGen: false, oppGen: false, mySpy: false, oppSpy: false };
+
+    function renderHistory() {
+        const list = document.getElementById('history-list');
+        if (!list) return;
+        if (roundHistory.length === 0) {
+            list.innerHTML = '<div style="color:#bbb; text-align:center; padding:14px 0;">目前還沒有回合紀錄</div>';
+            return;
+        }
+        list.innerHTML = roundHistory.map((r, i) => (
+            `<div class="history-row"><span>R${i + 1}｜我:${CARD_DATA[r.my].name}(${r.my})</span><span>對:${CARD_DATA[r.opp].name}(${r.opp})｜${r.result}</span></div>`
+        )).join('');
+    }
+
+    function toggleHistory() {
+        const panel = document.getElementById('history-panel');
+        panel.classList.toggle('active');
+        if (panel.classList.contains('active')) renderHistory();
+    }
+
+    function closeHistory() {
+        document.getElementById('history-panel').classList.remove('active');
+    }
 
     function initRoom(type) {
         const code = document.getElementById('room-input').value;
@@ -347,6 +400,13 @@
             else if (smallWin) win = (v1 < v2) ? 1 : -1;
             else win = (v1 > v2) ? 1 : -1;
         }
+
+        roundHistory.push({
+            my: p1,
+            opp: p2,
+            result: win === 1 ? '我方勝' : (win === -1 ? '對方勝' : '平手')
+        });
+        renderHistory();
 
         const myCard = document.querySelector('#my-slot .card');
         const oppCard = document.querySelector('#opp-slot .card');
