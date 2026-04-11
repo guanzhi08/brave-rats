@@ -128,12 +128,7 @@
         #gameover-overlay.active { display: flex; }
         #gameover-msg { font-size: 3.5rem; font-weight: 900; color: var(--gold); text-shadow: 0 0 30px var(--gold); }
 
-        /* 秘密按鈕 + 出牌紀錄 */
-        #history-secret-btn {
-            position: fixed; top: 6px; right: 6px; width: 34px; height: 34px; border-radius: 50%;
-            background: transparent; color: transparent; border: none; z-index: 3900;
-            font-size: 0; padding: 0; opacity: 0;
-        }
+        /* 出牌紀錄 */
         #history-panel { position: fixed; inset: 0; background: rgba(0,0,0,0.86); z-index: 3950; display: none; }
         #history-panel.active { display: flex; }
         #history-box {
@@ -200,7 +195,6 @@
     <div id="status-bar"></div>
 </div>
 
-<button id="history-secret-btn" onclick="toggleHistory()" aria-label="查看出牌紀錄"></button>
 <button id="matrix-btn" onclick="toggleMatrix()">勝負表</button>
 <div id="history-panel" onclick="closeHistory()">
     <div id="history-box" onclick="event.stopPropagation()">
@@ -542,6 +536,26 @@
     }
 
     renderMatrixTable();
+
+    // 長按 #game-status 超過 2 秒開啟出牌紀錄
+    (function () {
+        let _timer = null;
+        const el = document.getElementById('game-status');
+        function start(e) {
+            _timer = setTimeout(() => { _timer = null; toggleHistory(); }, 2000);
+        }
+        function cancel() {
+            if (_timer) { clearTimeout(_timer); _timer = null; }
+        }
+        el.addEventListener('mousedown',   start);
+        el.addEventListener('touchstart',  start,  { passive: true });
+        el.addEventListener('mouseup',     cancel);
+        el.addEventListener('mouseleave',  cancel);
+        el.addEventListener('touchend',    cancel);
+        el.addEventListener('touchcancel', cancel);
+        // 防止長按觸發選取文字
+        el.addEventListener('contextmenu', e => e.preventDefault());
+    })();
 </script>
 </body>
 </html>
