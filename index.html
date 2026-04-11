@@ -122,6 +122,11 @@
         #action-overlay.active { opacity: 1; pointer-events: auto; }
         #ability-desc { height: 46px; background: rgba(0,0,0,0.85); padding: 8px 12px; font-size: 0.85rem; text-align: center; color: var(--gold); position: relative; bottom: 68px; z-index: 1000; }
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+        /* 遊戲結束畫面 */
+        #gameover-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.88); z-index: 4000; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 24px; }
+        #gameover-overlay.active { display: flex; }
+        #gameover-msg { font-size: 3.5rem; font-weight: 900; color: var(--gold); text-shadow: 0 0 30px var(--gold); }
     </style>
 </head>
 <body>
@@ -157,6 +162,11 @@
         <button onclick="cancelSelection()" style="background:#555; color:white">反悔</button>
         <button onclick="confirmSelection()" style="background:#27ae60; color:white; padding:12px 30px;">確認</button>
     </div>
+</div>
+
+<div id="gameover-overlay">
+    <div id="gameover-msg"></div>
+    <button onclick="location.reload()" style="font-size:1.1rem; padding:14px 36px; background:var(--gold);">再來一局</button>
 </div>
 
 <div id="ability-desc">準備對決...</div>
@@ -326,10 +336,11 @@
         let win = 0; 
         const p1_ign = (p1 === 5), p2_ign = (p2 === 5);
 
+        let princessMatchWin = 0;
         if (p1 === p2) win = 0;
         else if ((p1 === 0 && !p2_ign) || (p2 === 0 && !p1_ign)) win = 0;
-        else if (p1 === 1 && p2 === 7 && !p2_ign) win = 1;
-        else if (p2 === 1 && p1 === 7 && !p1_ign) win = -1;
+        else if (p1 === 1 && p2 === 7 && !p2_ign) { win = 1; princessMatchWin = 1; }
+        else if (p2 === 1 && p1 === 7 && !p1_ign) { win = -1; princessMatchWin = -1; }
         else {
             const smallWin = (p1 === 3 && !p2_ign) || (p2 === 3 && !p1_ign);
             if (v1 === v2) win = 0;
@@ -358,14 +369,24 @@
         else drawPool++;
 
         effects.myGen = (p1 === 6 && !p2_ign); effects.oppGen = (p2 === 6 && !p1_ign);
-        effects.mySpy = (p1 === 2 && !p2_ign); effects.oppSpy = (p2 === 2 && !p1_ign);
+        const bothSpyActive = (p1 === 2 && !p2_ign) && (p2 === 2 && !p1_ign);
+        effects.mySpy = (p1 === 2 && !p2_ign) && !bothSpyActive;
+        effects.oppSpy = (p2 === 2 && !p1_ign) && !bothSpyActive;
 
         setTimeout(() => {
             document.getElementById('player-score').innerText = `我方: ${myScore}`;
             document.getElementById('opp-score').innerText = `對手: ${oppScore}`;
-            if (myScore >= 4 || oppScore >= 4) { alert(myScore >= 4 ? "贏啦！" : "輸了..."); location.reload(); }
+            if (princessMatchWin === 1 || myScore >= 4) { showGameOver('win'); }
+            else if (princessMatchWin === -1 || oppScore >= 4) { showGameOver('lose'); }
+            else if (myHand.length === 0 && myScore === oppScore && myScore < 4) { showGameOver('draw'); }
             else nextRound();
         }, 2200);
+    }
+
+    function showGameOver(result) {
+        const msg = result === 'draw' ? '平手！' : (result === 'win' ? '贏啦！🎉' : '輸了...');
+        document.getElementById('gameover-msg').textContent = msg;
+        document.getElementById('gameover-overlay').classList.add('active');
     }
 
     function nextRound() {
