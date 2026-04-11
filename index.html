@@ -146,6 +146,32 @@
             display: flex; justify-content: space-between; gap: 10px; padding: 8px 0;
             border-bottom: 1px dashed rgba(255,255,255,0.2);
         }
+
+        /* 勝負對照表 */
+        #matrix-btn {
+            position: fixed; top: 10px; left: 10px; z-index: 3900;
+            background: rgba(255,255,255,0.2); color: white; padding: 8px 12px;
+            font-size: 0.85rem;
+        }
+        #matrix-panel { position: fixed; inset: 0; background: rgba(0,0,0,0.88); z-index: 3960; display: none; }
+        #matrix-panel.active { display: flex; }
+        #matrix-box {
+            margin: auto; width: min(96vw, 920px); max-height: 86vh; overflow: auto;
+            background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.25);
+            border-radius: 14px; padding: 12px;
+        }
+        #matrix-wrap { overflow: auto; }
+        #matrix-table { border-collapse: collapse; min-width: 760px; width: 100%; font-size: 0.8rem; }
+        #matrix-table th, #matrix-table td {
+            border: 1px solid rgba(255,255,255,0.18); text-align: center; padding: 6px 4px;
+            white-space: nowrap;
+        }
+        #matrix-table th { background: rgba(30,40,55,0.95); position: sticky; top: 0; z-index: 2; }
+        #matrix-table tr th:first-child { position: sticky; left: 0; top: auto; z-index: 3; background: rgba(30,40,55,0.95); }
+        #matrix-table thead tr th:first-child { z-index: 4; top: 0; }
+        .m-win  { background: rgba(46,204,113,0.82); color: #0a2e18; font-weight: bold; }
+        .m-lose { background: rgba(231,76,60,0.82);  color: #2e0808; font-weight: bold; }
+        .m-draw { background: rgba(241,196,15,0.82); color: #2e2000; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -175,6 +201,7 @@
 </div>
 
 <button id="history-secret-btn" onclick="toggleHistory()" aria-label="查看出牌紀錄"></button>
+<button id="matrix-btn" onclick="toggleMatrix()">勝負表</button>
 <div id="history-panel" onclick="closeHistory()">
     <div id="history-box" onclick="event.stopPropagation()">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
@@ -182,6 +209,17 @@
             <button onclick="closeHistory()" style="background:#555; color:white; padding:8px 12px;">關閉</button>
         </div>
         <div id="history-list"></div>
+    </div>
+</div>
+
+<div id="matrix-panel" onclick="closeMatrix()">
+    <div id="matrix-box" onclick="event.stopPropagation()">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <b style="color:var(--gold)">勝負對照表（列=我方，欄=對方）</b>
+            <button onclick="closeMatrix()" style="background:#555; color:white; padding:8px 12px;">關閉</button>
+        </div>
+        <div style="font-size:0.78rem; color:#ccc; margin-bottom:8px;">格子內容：獲勝方｜結束比賽 或 暫緩</div>
+        <div id="matrix-wrap"><table id="matrix-table"></table></div>
     </div>
 </div>
 
@@ -241,6 +279,61 @@
 
     function closeHistory() {
         document.getElementById('history-panel').classList.remove('active');
+    }
+
+    function getMatrixOutcome(my, opp) {
+        let win = 0;
+        let matchEnd = 0;
+        const p1_ign = (my === 5), p2_ign = (opp === 5);
+
+        if (my === opp) win = 0;
+        else if ((my === 0 && !p2_ign) || (opp === 0 && !p1_ign)) win = 0;
+        else if (my === 1 && opp === 7 && !p2_ign) { win = 1; matchEnd = 1; }
+        else if (opp === 1 && my === 7 && !p1_ign) { win = -1; matchEnd = -1; }
+        else {
+            const smallWin = (my === 3 && !p2_ign) || (opp === 3 && !p1_ign);
+            if (my === opp) win = 0;
+            else if (smallWin) win = (my < opp) ? 1 : -1;
+            else win = (my > opp) ? 1 : -1;
+        }
+
+        return { win, matchEnd, delayed: win === 0 };
+    }
+
+    function renderMatrixTable() {
+        const table = document.getElementById('matrix-table');
+        if (!table) return;
+        let html = '<tr><th>我/對</th>';
+        for (let opp = 0; opp <= 7; opp++) {
+            html += `<th>${opp}<br>${CARD_DATA[opp].name}</th>`;
+        }
+        html += '</tr>';
+
+        for (let my = 0; my <= 7; my++) {
+            html += `<tr><th>${my}<br>${CARD_DATA[my].name}</th>`;
+            for (let opp = 0; opp <= 7; opp++) {
+                const out = getMatrixOutcome(my, opp);
+                let cls = 'm-draw';
+                let text = '暫緩';
+                if (out.matchEnd === 1) { cls = 'm-win'; text = '結束'; }
+                else if (out.matchEnd === -1) { cls = 'm-lose'; text = '結束'; }
+                else if (out.win === 1) { cls = 'm-win'; text = '我方'; }
+                else if (out.win === -1) { cls = 'm-lose'; text = '對方'; }
+                html += `<td class="${cls}">${text}</td>`;
+            }
+            html += '</tr>';
+        }
+        table.innerHTML = html;
+    }
+
+    function toggleMatrix() {
+        const panel = document.getElementById('matrix-panel');
+        panel.classList.toggle('active');
+        if (panel.classList.contains('active')) renderMatrixTable();
+    }
+
+    function closeMatrix() {
+        document.getElementById('matrix-panel').classList.remove('active');
     }
 
     function initRoom(type) {
@@ -456,6 +549,8 @@
         document.getElementById('game-status').innerText = "請出牌";
         renderHand();
     }
+
+    renderMatrixTable();
 </script>
 </body>
 </html>
