@@ -176,7 +176,13 @@
 <div id="setup-layer">
     <div id="step-1" class="room-box">
         <h2 style="color:var(--gold); margin-top:0;">鼠國稱王</h2>
-        <input type="number" id="room-input" placeholder="4位數字房號" pattern="\d*">
+        <input type="text" id="room-input" placeholder="4位數字房號" maxlength="4" inputmode="numeric" pattern="\d*">
+        <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-bottom:12px;">
+            <button onclick="setRoom('0514')" style="padding:8px 10px; font-size:0.9rem; background:rgba(255,255,255,0.15); color:white;">0514</button>
+            <button onclick="setRoom('0607')" style="padding:8px 10px; font-size:0.9rem; background:rgba(255,255,255,0.15); color:white;">0607</button>
+            <button onclick="setRoom('0810')" style="padding:8px 10px; font-size:0.9rem; background:rgba(255,255,255,0.15); color:white;">0810</button>
+            <button onclick="setRoom('1112')" style="padding:8px 10px; font-size:0.9rem; background:rgba(255,255,255,0.15); color:white;">1112</button>
+        </div>
         <div style="display:flex; gap:10px; justify-content: center;">
             <button onclick="initRoom('host')">建立</button>
             <button onclick="initRoom('join')" style="background:white">加入</button>
@@ -357,6 +363,14 @@
             else { conn = peer.connect("rats-fix-" + code + 'A'); setupGame(); }
         });
         peer.on('connection', c => { conn = c; setupGame(); });
+    }
+
+    document.getElementById('room-input').addEventListener('input', function() {
+        this.value = this.value.replace(/\D/g, '').slice(0, 4);
+    });
+
+    function setRoom(code) {
+        document.getElementById('room-input').value = code;
     }
 
     const urlRoom = new URLSearchParams(window.location.search).get('room');
