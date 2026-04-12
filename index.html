@@ -349,7 +349,7 @@
     </div>
     <button id="chat-btn" onclick="toggleChatPanel()">聊天</button>
     <div id="chat-panel">
-        <input id="chat-input" type="text" maxlength="80" placeholder="輸入訊息..." inputmode="text">
+        <input id="chat-input" type="text" maxlength="80" placeholder="點語音開始說話..." inputmode="none" readonly>
         <div class="preset-buttons">
             <button class="preset-btn" onclick="sendPresetMessage('這步厲害 🎯')"><span>這步厲害</span><span class="emoji">🎯</span></button>
             <button class="preset-btn" onclick="sendPresetMessage('被猜到了 😅')"><span>被猜到了</span><span class="emoji">😅</span></button>
@@ -357,6 +357,7 @@
             <button class="preset-btn" onclick="sendPresetMessage('我快輸了 😰')"><span>我快輸了</span><span class="emoji">😰</span></button>
         </div>
         <div class="chat-actions">
+            <button id="voice-btn" onclick="startVoiceInput()" style="background:#16a085; color:white; padding:9px 14px;">語音</button>
             <button onclick="closeChatPanel()" style="background:#555; color:white; padding:9px 14px;">取消</button>
             <button onclick="sendChatMessage()" style="padding:9px 14px;">送出</button>
         </div>
@@ -489,13 +490,100 @@
         document.getElementById('rules-panel').classList.remove('active');
     }
 
+    let speechRecognition = null;
+    let isListening = false;
+
+    function isMobileChatMode() {
+        return window.matchMedia('(max-width: 768px), (max-height: 900px)').matches;
+    }
+
+    function setVoiceButtonState(listening) {
+        const btn = document.getElementById('voice-btn');
+        if (!btn) return;
+        btn.textContent = listening ? '聆聽中...' : '語音';
+        btn.style.background = listening ? '#d35400' : '#16a085';
+    }
+
+    function ensureSpeechRecognition() {
+        if (speechRecognition) return speechRecognition;
+        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SR) return null;
+
+        const input = document.getElementById('chat-input');
+        speechRecognition = new SR();
+        speechRecognition.lang = 'zh-TW';
+        speechRecognition.interimResults = true;
+        speechRecognition.continuous = false;
+        speechRecognition.maxAlternatives = 1;
+
+        speechRecognition.onstart = () => {
+            isListening = true;
+            setVoiceButtonState(true);
+        };
+
+        speechRecognition.onresult = (event) => {
+            let transcript = '';
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                transcript += event.results[i][0].transcript;
+            }
+            input.value = transcript.trim().slice(0, 80);
+        };
+
+        speechRecognition.onend = () => {
+            isListening = false;
+            setVoiceButtonState(false);
+        };
+
+        speechRecognition.onerror = () => {
+            isListening = false;
+            setVoiceButtonState(false);
+        };
+
+        return speechRecognition;
+    }
+
+    function startVoiceInput() {
+        const recognition = ensureSpeechRecognition();
+        if (!recognition) {
+            document.getElementById('chat-input').placeholder = '此裝置不支援語音辨識';
+            return;
+        }
+        if (isListening) return;
+        try {
+            recognition.start();
+        } catch (e) {
+            // Ignore repeated start errors from browser speech APIs.
+        }
+    }
+
+    function stopVoiceInput() {
+        if (speechRecognition && isListening) {
+            speechRecognition.stop();
+        }
+    }
+
     function toggleChatPanel() {
         const panel = document.getElementById('chat-panel');
+        const input = document.getElementById('chat-input');
         panel.classList.toggle('active');
-        if (panel.classList.contains('active')) document.getElementById('chat-input').focus();
+
+        if (panel.classList.contains('active')) {
+            if (isMobileChatMode()) {
+                input.setAttribute('readonly', 'readonly');
+                input.setAttribute('inputmode', 'none');
+                startVoiceInput();
+            } else {
+                input.removeAttribute('readonly');
+                input.setAttribute('inputmode', 'text');
+                input.focus();
+            }
+            return;
+        }
+        stopVoiceInput();
     }
 
     function closeChatPanel() {
+        stopVoiceInput();
         document.getElementById('chat-panel').classList.remove('active');
     }
 
