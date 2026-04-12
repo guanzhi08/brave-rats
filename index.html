@@ -153,8 +153,9 @@
         #chat-panel.active { display: block; }
         #chat-panel.keyboard-open {
             position: fixed; right: 10px; bottom: var(--chat-keyboard-offset, 14px);
-            width: min(92vw, 360px); z-index: 3900;
+            width: min(92vw, 360px); z-index: 3900; cursor: grab;
         }
+        #chat-panel.keyboard-open.dragging { cursor: grabbing; }
         #chat-input {
             width: 100%; margin: 0 0 10px; padding: 14px 14px; font-size: 1.1rem;
             text-align: left; border-radius: 10px;
@@ -537,6 +538,8 @@
         btn.classList.toggle('active', !!active);
     }
 
+    let chatPanelDragOffset = 0;
+
     function updateChatPanelForKeyboard() {
         const panel = document.getElementById('chat-panel');
         if (!panel || !panel.classList.contains('active') || !isMobileChatMode() || !keyboardMode) {
@@ -550,12 +553,55 @@
         }
 
         if (keyboardHeight > 80) {
-            panel.style.setProperty('--chat-keyboard-offset', `${Math.round(keyboardHeight + 10)}px`);
+            const panelHeight = 200;
+            const halflHeight = Math.round(panelHeight / 2);
+            const baseOffset = keyboardHeight + 10;
+            const finalOffset = Math.max(10, baseOffset - halflHeight + chatPanelDragOffset);
+            panel.style.setProperty('--chat-keyboard-offset', `${finalOffset}px`);
             panel.classList.add('keyboard-open');
         } else {
             panel.classList.remove('keyboard-open');
             panel.style.removeProperty('--chat-keyboard-offset');
+            chatPanelDragOffset = 0;
         }
+    }
+
+    function initChatPanelDrag() {
+        const panel = document.getElementById('chat-panel');
+        if (!panel) return;
+
+        let dragStartY = 0, dragStartBottom = 0;
+
+        function handleDragStart(e) {
+            if (!panel.classList.contains('keyboard-open')) return;
+            dragStartY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
+            dragStartBottom = parseFloat(getComputedStyle(panel).bottom) || 0;
+            panel.classList.add('dragging');
+            document.addEventListener('mousemove', handleDragMove);
+            document.addEventListener('touchmove', handleDragMove, { passive: false });
+            document.addEventListener('mouseup', handleDragEnd);
+            document.addEventListener('touchend', handleDragEnd);
+        }
+
+        function handleDragMove(e) {
+            const currentY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
+            const deltaY = dragStartY - currentY;
+            const maxDragDown = 60;
+            const maxDragUp = -40;
+            chatPanelDragOffset = Math.max(maxDragUp, Math.min(maxDragDown, deltaY));
+            updateChatPanelForKeyboard();
+        }
+
+        function handleDragEnd() {
+            panel.classList.remove('dragging');
+            document.removeEventListener('mousemove', handleDragMove);
+            document.removeEventListener('touchmove', handleDragMove);
+            document.removeEventListener('mouseup', handleDragEnd);
+            document.removeEventListener('touchend', handleDragEnd);
+        }
+
+        panel.addEventListener('mousedown', handleDragStart);
+        panel.addEventListener('touchstart', handleDragStart, { passive: true });
     }
 
     function enableKeyboardInput() {
@@ -566,6 +612,8 @@
         input.setAttribute('inputmode', 'text');
         input.placeholder = '輸入訊息...';
         setKeyboardButtonState(true);
+        chatPanelDragOffset = 0;
+        initChatPanelDrag();
         updateChatPanelForKeyboard();
         requestAnimationFrame(() => input.focus());
     }
@@ -577,9 +625,10 @@
         input.setAttribute('inputmode', 'none');
         input.placeholder = '點語音開始說話...';
         setKeyboardButtonState(false);
+        chatPanelDragOffset = 0;
         const panel = document.getElementById('chat-panel');
         if (panel) {
-            panel.classList.remove('keyboard-open');
+            panel.classList.remove('keyboard-open', 'dragging');
             panel.style.removeProperty('--chat-keyboard-offset');
         }
     }
