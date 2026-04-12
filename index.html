@@ -24,9 +24,17 @@
 
         /* 看板 */
         #info-panel { padding: 15px; background: rgba(0,0,0,0.4); z-index: 1000; position: relative; }
-        .score-board { display: flex; justify-content: space-around; font-size: 1.1rem; font-weight: bold; }
+        .score-board {
+            display: flex; justify-content: center; align-items: center; gap: 16px;
+            font-size: 1.1rem; font-weight: bold; padding: 0 78px;
+        }
+        .score-board span { white-space: nowrap; }
         #status-bar { text-align: center; font-size: 0.8rem; color: #bbb; margin-top: 5px; min-height: 1rem; }
         .spy-alert { color: var(--gold); animation: blink 1s infinite; }
+
+        @media (max-width: 420px) {
+            .score-board { gap: 10px; padding: 0 88px; font-size: 0.96rem; }
+        }
 
         /* 對戰區 - 確保他在中間且層級高於手牌 */
         #battle-field { 
@@ -255,7 +263,7 @@
             <div class="cr-body"><div class="cr-title">3 刺客</div><div class="cr-desc">本回合改為數值小者獲勝。（對手出巫師可解除）</div></div>
         </div>
         <div class="card-rule">
-            <div class="cr-icon">🤵‍♀️</div>
+            <div class="cr-icon">🤵</div>
             <div class="cr-body"><div class="cr-title">4 大使</div><div class="cr-desc">若此牌獲勝，視為贏得 2 個回合（本回合積分 +1）。（對手出巫師可解除）</div></div>
         </div>
         <div class="card-rule">
@@ -318,7 +326,7 @@
         1: { name: "公主", emoji: "👸", desc: "若對手出王子(7)，你直接贏得比賽。" },
         2: { name: "間諜", emoji: "🕵️", desc: "下一回合對方必須先出牌且牌面朝上。" },
         3: { name: "刺客", emoji: "🗡️", desc: "數值小者贏。" },
-        4: { name: "大使", emoji: "🤵‍♀️", desc: "若此牌獲勝，視為贏得 2 個回合。" },
+        4: { name: "大使", emoji: "🤵", desc: "若此牌獲勝，視為贏得 2 個回合。" },
         5: { name: "巫師", emoji: "🧙", desc: "無視對手此回合的所有特殊能力。" },
         6: { name: "將軍", emoji: "🛡️", desc: "你下一回合出的牌數值 +2。" },
         7: { name: "王子", emoji: "🤴", desc: "數值大者贏。除非對方出 0 或 1。" }
@@ -430,6 +438,7 @@
     function initRoom(type) {
         const code = document.getElementById('room-input').value;
         if(!code) return;
+        localStorage.setItem('rats-last-room', code);
         role = type;
         peer = new Peer("rats-fix-" + code + (role === 'host' ? 'A' : 'B'));
         document.getElementById('step-1').style.display = 'none';
@@ -450,7 +459,15 @@
     }
 
     const urlRoom = new URLSearchParams(window.location.search).get('room');
-    if(urlRoom) { document.getElementById('room-input').value = urlRoom; setTimeout(() => initRoom('join'), 500); }
+    const savedRoom = localStorage.getItem('rats-last-room');
+    if(urlRoom) {
+        const normalizedRoom = urlRoom.replace(/\D/g, '').slice(0, 4);
+        document.getElementById('room-input').value = normalizedRoom;
+        localStorage.setItem('rats-last-room', normalizedRoom);
+        setTimeout(() => initRoom('join'), 500);
+    } else if (savedRoom) {
+        document.getElementById('room-input').value = savedRoom.replace(/\D/g, '').slice(0, 4);
+    }
 
     function setupGame() {
         myColor = role === 'host' ? 'blue' : 'red';
