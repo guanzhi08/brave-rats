@@ -31,9 +31,20 @@
         .score-board span { white-space: nowrap; }
         #status-bar { text-align: center; font-size: 0.8rem; color: #bbb; margin-top: 5px; min-height: 1rem; }
         .spy-alert { color: var(--gold); animation: blink 1s infinite; }
+        #opp-chat-bubble {
+            position: absolute; right: 12px; top: 54px; max-width: min(56vw, 280px);
+            background: rgba(255,255,255,0.96); color: #1f2d3d; padding: 14px 16px;
+            border-radius: 14px 14px 4px 14px; box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+            font-size: 1.05rem; line-height: 1.4; opacity: 0; transform: translateY(-6px);
+            pointer-events: none; transition: opacity 0.2s ease, transform 0.2s ease; z-index: 1200;
+        }
+        #opp-chat-bubble.active { opacity: 1; transform: translateY(0); }
 
-        @media (max-width: 420px) {
+        @media (max-width: 768px), (max-height: 900px) {
             .score-board { gap: 10px; padding: 0 88px; font-size: 0.96rem; }
+            #opp-chat-bubble { top: 58px; right: 10px; max-width: 64vw; font-size: 1rem; padding: 12px 14px; }
+            #chat-btn { right: 10px; bottom: 92px; }
+            #chat-panel { right: 10px; bottom: 140px; width: min(90vw, 340px); }
         }
 
         /* 對戰區 - 確保他在中間且層級高於手牌 */
@@ -129,6 +140,33 @@
         #action-overlay { position: fixed; bottom: 122px; width: 100%; display: flex; justify-content: center; gap: 20px; opacity: 0; pointer-events: none; transition: 0.3s; z-index: 1800; }
         #action-overlay.active { opacity: 1; pointer-events: auto; }
         #ability-desc { height: 46px; background: rgba(0,0,0,0.85); padding: 8px 12px; font-size: 0.85rem; text-align: center; color: var(--gold); position: relative; bottom: 68px; z-index: 1000; }
+        #chat-btn {
+            position: absolute; right: 12px; bottom: 84px; z-index: 1850;
+            background: rgba(255,255,255,0.92); color: #22313f; padding: 10px 14px;
+            font-size: 0.9rem; box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+        }
+        #chat-panel {
+            position: absolute; right: 12px; bottom: 134px; width: min(84vw, 320px);
+            background: rgba(0,0,0,0.9); border: 1px solid rgba(255,255,255,0.16);
+            border-radius: 14px; padding: 12px; z-index: 1860; display: none;
+        }
+        #chat-panel.active { display: block; }
+        #chat-input {
+            width: 100%; margin: 0 0 10px; padding: 14px 14px; font-size: 1.1rem;
+            text-align: left; border-radius: 10px;
+        }
+        .preset-buttons {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;
+        }
+        .preset-btn {
+            padding: 10px 8px; font-size: 0.95rem; background: #3498db; color: white;
+            border-radius: 8px; border: none; cursor: pointer; font-weight: 600;
+            display: flex; align-items: center; justify-content: center; gap: 6px;
+            transition: background 0.2s; white-space: nowrap;
+        }
+        .preset-btn:hover { background: #2980b9; }
+        .preset-btn .emoji { font-size: 1.2rem; }
+        #chat-panel .chat-actions { display: flex; justify-content: flex-end; gap: 8px; }
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
         /* 遊戲結束畫面 */
@@ -231,6 +269,7 @@
         <span id="opp-score">對方: 0</span>
     </div>
     <div id="status-bar"></div>
+    <div id="opp-chat-bubble"></div>
 </div>
 
 <button id="rules-btn" onclick="toggleRules()">規則</button>
@@ -308,6 +347,20 @@
         <button onclick="cancelSelection()" style="background:#555; color:white">反悔</button>
         <button onclick="confirmSelection()" style="background:#27ae60; color:white; padding:12px 30px;">確認</button>
     </div>
+    <button id="chat-btn" onclick="toggleChatPanel()">聊天</button>
+    <div id="chat-panel">
+        <input id="chat-input" type="text" maxlength="80" placeholder="輸入訊息..." inputmode="text">
+        <div class="preset-buttons">
+            <button class="preset-btn" onclick="sendPresetMessage('這步厲害 🎯')"><span>這步厲害</span><span class="emoji">🎯</span></button>
+            <button class="preset-btn" onclick="sendPresetMessage('被猜到了 😅')"><span>被猜到了</span><span class="emoji">😅</span></button>
+            <button class="preset-btn" onclick="sendPresetMessage('我要贏了 🏆')"><span>我要贏了</span><span class="emoji">🏆</span></button>
+            <button class="preset-btn" onclick="sendPresetMessage('我快輸了 😰')"><span>我快輸了</span><span class="emoji">😰</span></button>
+        </div>
+        <div class="chat-actions">
+            <button onclick="closeChatPanel()" style="background:#555; color:white; padding:9px 14px;">取消</button>
+            <button onclick="sendChatMessage()" style="padding:9px 14px;">送出</button>
+        </div>
+    </div>
 </div>
 
 <div id="gameover-overlay">
@@ -336,6 +389,7 @@
     let roundHistory = [];
     let peer, conn, myColor, role, pendingVal = null, myPlayedVal = null, oppPlayedVal = null;
     let effects = { myGen: false, oppGen: false, mySpy: false, oppSpy: false };
+    let oppChatTimer = null;
 
     function renderHistory() {
         const list = document.getElementById('history-list');
@@ -435,6 +489,39 @@
         document.getElementById('rules-panel').classList.remove('active');
     }
 
+    function toggleChatPanel() {
+        const panel = document.getElementById('chat-panel');
+        panel.classList.toggle('active');
+        if (panel.classList.contains('active')) document.getElementById('chat-input').focus();
+    }
+
+    function closeChatPanel() {
+        document.getElementById('chat-panel').classList.remove('active');
+    }
+
+    function showOppChatBubble(message) {
+        const bubble = document.getElementById('opp-chat-bubble');
+        bubble.textContent = message;
+        bubble.classList.add('active');
+        clearTimeout(oppChatTimer);
+        oppChatTimer = setTimeout(() => bubble.classList.remove('active'), 4200);
+    }
+
+    function sendChatMessage() {
+        const input = document.getElementById('chat-input');
+        const message = input.value.trim().slice(0, 80);
+        if (!message || !conn) return;
+        conn.send({ type: 'chat', message });
+        input.value = '';
+        closeChatPanel();
+    }
+
+    function sendPresetMessage(message) {
+        if (!conn) return;
+        conn.send({ type: 'chat', message });
+        closeChatPanel();
+    }
+
     function initRoom(type) {
         const code = document.getElementById('room-input').value;
         if(!code) return;
@@ -472,7 +559,14 @@
     function setupGame() {
         myColor = role === 'host' ? 'blue' : 'red';
         document.getElementById('setup-layer').style.display = 'none';
-        conn.on('data', data => { if(data.type === 'play'){ oppPlayedVal = data.value; checkReveal(); }});
+        conn.on('data', data => {
+            if (data.type === 'play') {
+                oppPlayedVal = data.value;
+                checkReveal();
+            } else if (data.type === 'chat') {
+                showOppChatBubble(String(data.message || '').slice(0, 80));
+            }
+        });
         renderHand();
     }
 
