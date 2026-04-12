@@ -540,7 +540,11 @@
             document.getElementById('opp-score').innerText = `對手: ${oppScore}`;
             if (princessMatchWin === 1 || myScore >= 4) { showGameOver('win'); }
             else if (princessMatchWin === -1 || oppScore >= 4) { showGameOver('lose'); }
-            else if (myHand.length === 0 && myScore === oppScore && myScore < 4) { showGameOver('draw'); }
+            else if (myHand.length === 0 && myScore < 4 && oppScore < 4) {
+                if (myScore > oppScore) showGameOver('win');
+                else if (oppScore > myScore) showGameOver('lose');
+                else showGameOver('draw');
+            }
             else nextRound();
         }, 2200);
     }
