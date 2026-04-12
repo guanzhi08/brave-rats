@@ -169,6 +169,28 @@
         .m-win  { background: rgba(46,204,113,0.82); color: #0a2e18; font-weight: bold; }
         .m-lose { background: rgba(231,76,60,0.82);  color: #2e0808; font-weight: bold; }
         .m-draw { background: rgba(241,196,15,0.82); color: #2e2000; font-weight: bold; }
+
+        /* 規則面板 */
+        #rules-btn {
+            position: fixed; top: 10px; right: 10px; z-index: 3900;
+            background: rgba(255,255,255,0.2); color: white; padding: 8px 12px;
+            font-size: 0.85rem;
+        }
+        #rules-panel { position: fixed; inset: 0; background: rgba(0,0,0,0.88); z-index: 3970; display: none; }
+        #rules-panel.active { display: flex; }
+        #rules-box {
+            margin: auto; width: min(94vw, 560px); max-height: 88vh; overflow-y: auto;
+            background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.25);
+            border-radius: 14px; padding: 16px 18px;
+        }
+        #rules-box h3 { color: var(--gold); margin: 14px 0 6px; font-size: 1rem; }
+        #rules-box p  { margin: 0 0 6px; font-size: 0.88rem; color: #ddd; line-height: 1.5; }
+        .card-rule { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-bottom: 1px dashed rgba(255,255,255,0.15); }
+        .card-rule:last-child { border-bottom: none; }
+        .card-rule .cr-icon { font-size: 1.6rem; flex-shrink: 0; width: 28px; text-align: center; }
+        .card-rule .cr-body { flex: 1; }
+        .card-rule .cr-title { font-weight: bold; color: var(--gold); font-size: 0.92rem; }
+        .card-rule .cr-desc  { font-size: 0.83rem; color: #ccc; margin-top: 2px; }
     </style>
 </head>
 <body>
@@ -203,7 +225,53 @@
     <div id="status-bar"></div>
 </div>
 
-<button id="matrix-btn" onclick="toggleMatrix()">勝負表</button>
+<button id="rules-btn" onclick="toggleRules()">規則</button>
+<button id="matrix-btn" onclick="toggleMatrix()">勝負</button>
+
+<div id="rules-panel" onclick="closeRules()">
+    <div id="rules-box" onclick="event.stopPropagation()">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <b style="color:var(--gold); font-size:1.1rem;">🐭 鼠國稱王 遊戲規則</b>
+            <button onclick="closeRules()" style="background:#555; color:white; padding:8px 12px;">關閉</button>
+        </div>
+        <h3>基本規則</h3>
+        <p>雙方各持 0–7 共 8 張牌，每回合同時出一張。數值高者贏得本回合，累積 <b>4 分</b>先達標者獲勝。</p>
+        <p>平手時積分放入「懸賞池」，下一個勝者一次全拿。全部牌出完時若未達 4 分，以積分高者獲勝；同分則平手。</p>
+        <h3>卡牌能力</h3>
+        <div class="card-rule">
+            <div class="cr-icon">🎵</div>
+            <div class="cr-body"><div class="cr-title">0 樂師</div><div class="cr-desc">本回合強制平手，無視雙方所有能力。積分推入懸賞池，下回合結算。</div></div>
+        </div>
+        <div class="card-rule">
+            <div class="cr-icon">👸</div>
+            <div class="cr-body"><div class="cr-title">1 公主</div><div class="cr-desc">若對手出王子(7)，你直接贏得整場比賽。</div></div>
+        </div>
+        <div class="card-rule">
+            <div class="cr-icon">🕵️</div>
+            <div class="cr-body"><div class="cr-title">2 間諜</div><div class="cr-desc">下一回合對手必須先公開出牌。雙方同出間諜時效果抵消。（對手出巫師可解除）</div></div>
+        </div>
+        <div class="card-rule">
+            <div class="cr-icon">🗡️</div>
+            <div class="cr-body"><div class="cr-title">3 刺客</div><div class="cr-desc">本回合改為數值小者獲勝。（對手出巫師可解除）</div></div>
+        </div>
+        <div class="card-rule">
+            <div class="cr-icon">🤵‍♀️</div>
+            <div class="cr-body"><div class="cr-title">4 大使</div><div class="cr-desc">若此牌獲勝，視為贏得 2 個回合（本回合積分 +1）。（對手出巫師可解除）</div></div>
+        </div>
+        <div class="card-rule">
+            <div class="cr-icon">🧙</div>
+            <div class="cr-body"><div class="cr-title">5 巫師</div><div class="cr-desc">無視對手本回合的所有特殊能力。</div></div>
+        </div>
+        <div class="card-rule">
+            <div class="cr-icon">🛡️</div>
+            <div class="cr-body"><div class="cr-title">6 將軍</div><div class="cr-desc">你下一回合所出牌的數值 +2。（對手出巫師可解除）</div></div>
+        </div>
+        <div class="card-rule">
+            <div class="cr-icon">🤴</div>
+            <div class="cr-body"><div class="cr-title">7 王子</div><div class="cr-desc">數值大者獲勝，但遇對手出樂師(0)或公主(1)時效果例外（見各牌說明）。</div></div>
+        </div>
+    </div>
+</div>
 <div id="history-panel" onclick="closeHistory()">
     <div id="history-box" onclick="event.stopPropagation()">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
@@ -349,6 +417,14 @@
 
     function closeMatrix() {
         document.getElementById('matrix-panel').classList.remove('active');
+    }
+
+    function toggleRules() {
+        document.getElementById('rules-panel').classList.toggle('active');
+    }
+
+    function closeRules() {
+        document.getElementById('rules-panel').classList.remove('active');
     }
 
     function initRoom(type) {
