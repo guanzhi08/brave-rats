@@ -151,6 +151,10 @@
             border-radius: 14px; padding: 12px; z-index: 1860; display: none;
         }
         #chat-panel.active { display: block; }
+        #chat-panel.keyboard-open {
+            position: fixed; right: 10px; bottom: var(--chat-keyboard-offset, 14px);
+            width: min(92vw, 360px); z-index: 3900;
+        }
         #chat-input {
             width: 100%; margin: 0 0 10px; padding: 14px 14px; font-size: 1.1rem;
             text-align: left; border-radius: 10px;
@@ -167,6 +171,8 @@
         .preset-btn:hover { background: #2980b9; }
         .preset-btn .emoji { font-size: 1.2rem; }
         #chat-panel .chat-actions { display: flex; justify-content: flex-end; gap: 8px; }
+        #keyboard-btn { background: #8e44ad; color: white; }
+        #keyboard-btn.active { background: #6c3483; }
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
         /* 遊戲結束畫面 */
@@ -189,6 +195,11 @@
         }
         .history-result.win { color: #2ecc71; font-weight: bold; }
         .history-result.lose { color: #e74c3c; font-weight: bold; }
+        #history-opp-remain {
+            margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.24);
+            font-size: 0.9rem; color: #e8edf3; line-height: 1.5;
+        }
+        .history-remain-cards { color: #f6d36b; font-weight: 700; }
 
         /* 勝負對照表 */
         #matrix-btn {
@@ -326,6 +337,7 @@
             <button onclick="closeHistory()" style="background:#555; color:white; padding:8px 12px;">關閉</button>
         </div>
         <div id="history-list"></div>
+        <div id="history-opp-remain"></div>
     </div>
 </div>
 
@@ -358,6 +370,7 @@
         </div>
         <div class="chat-actions">
             <button id="voice-btn" onclick="startVoiceInput()" style="background:#16a085; color:white; padding:9px 14px;">語音</button>
+            <button id="keyboard-btn" onclick="enableKeyboardInput()" style="padding:9px 14px;">鍵盤</button>
             <button onclick="closeChatPanel()" style="background:#555; color:white; padding:9px 14px;">取消</button>
             <button onclick="sendChatMessage()" style="padding:9px 14px;">送出</button>
         </div>
@@ -394,7 +407,20 @@
 
     function renderHistory() {
         const list = document.getElementById('history-list');
+        const oppRemain = document.getElementById('history-opp-remain');
         if (!list) return;
+
+        const usedOpp = new Set(roundHistory.map(r => r.opp));
+        const remainOppCards = [0, 1, 2, 3, 4, 5, 6, 7].filter(v => !usedOpp.has(v));
+        if (oppRemain) {
+            if (remainOppCards.length === 0) {
+                oppRemain.innerHTML = '<b>對手剩餘手牌：</b><span class="history-remain-cards">無</span>';
+            } else {
+                const labels = remainOppCards.map(v => `${CARD_DATA[v].emoji}${CARD_DATA[v].name}(${v})`).join(' 、 ');
+                oppRemain.innerHTML = `<b>對手剩餘手牌：</b><span class="history-remain-cards">${labels}</span>`;
+            }
+        }
+
         if (roundHistory.length === 0) {
             list.innerHTML = '<div style="color:#bbb; text-align:center; padding:14px 0;">目前還沒有回合紀錄</div>';
             return;
@@ -492,6 +518,7 @@
 
     let speechRecognition = null;
     let isListening = false;
+    let keyboardMode = false;
 
     function isMobileChatMode() {
         return window.matchMedia('(max-width: 768px), (max-height: 900px)').matches;
@@ -502,6 +529,59 @@
         if (!btn) return;
         btn.textContent = listening ? '聆聽中...' : '語音';
         btn.style.background = listening ? '#d35400' : '#16a085';
+    }
+
+    function setKeyboardButtonState(active) {
+        const btn = document.getElementById('keyboard-btn');
+        if (!btn) return;
+        btn.classList.toggle('active', !!active);
+    }
+
+    function updateChatPanelForKeyboard() {
+        const panel = document.getElementById('chat-panel');
+        if (!panel || !panel.classList.contains('active') || !isMobileChatMode() || !keyboardMode) {
+            if (panel) panel.classList.remove('keyboard-open');
+            return;
+        }
+
+        let keyboardHeight = 0;
+        if (window.visualViewport) {
+            keyboardHeight = Math.max(0, window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop);
+        }
+
+        if (keyboardHeight > 80) {
+            panel.style.setProperty('--chat-keyboard-offset', `${Math.round(keyboardHeight + 10)}px`);
+            panel.classList.add('keyboard-open');
+        } else {
+            panel.classList.remove('keyboard-open');
+            panel.style.removeProperty('--chat-keyboard-offset');
+        }
+    }
+
+    function enableKeyboardInput() {
+        const input = document.getElementById('chat-input');
+        keyboardMode = true;
+        stopVoiceInput();
+        input.removeAttribute('readonly');
+        input.setAttribute('inputmode', 'text');
+        input.placeholder = '輸入訊息...';
+        setKeyboardButtonState(true);
+        updateChatPanelForKeyboard();
+        requestAnimationFrame(() => input.focus());
+    }
+
+    function disableKeyboardInput() {
+        const input = document.getElementById('chat-input');
+        keyboardMode = false;
+        input.setAttribute('readonly', 'readonly');
+        input.setAttribute('inputmode', 'none');
+        input.placeholder = '點語音開始說話...';
+        setKeyboardButtonState(false);
+        const panel = document.getElementById('chat-panel');
+        if (panel) {
+            panel.classList.remove('keyboard-open');
+            panel.style.removeProperty('--chat-keyboard-offset');
+        }
     }
 
     function ensureSpeechRecognition() {
@@ -544,8 +624,10 @@
 
     function startVoiceInput() {
         const recognition = ensureSpeechRecognition();
+        disableKeyboardInput();
         if (!recognition) {
             document.getElementById('chat-input').placeholder = '此裝置不支援語音辨識';
+            enableKeyboardInput();
             return;
         }
         if (isListening) return;
@@ -569,23 +651,43 @@
 
         if (panel.classList.contains('active')) {
             if (isMobileChatMode()) {
-                input.setAttribute('readonly', 'readonly');
-                input.setAttribute('inputmode', 'none');
+                disableKeyboardInput();
                 startVoiceInput();
             } else {
                 input.removeAttribute('readonly');
                 input.setAttribute('inputmode', 'text');
+                setKeyboardButtonState(false);
                 input.focus();
             }
             return;
         }
         stopVoiceInput();
+        disableKeyboardInput();
     }
 
     function closeChatPanel() {
         stopVoiceInput();
+        disableKeyboardInput();
         document.getElementById('chat-panel').classList.remove('active');
     }
+
+    window.addEventListener('resize', updateChatPanelForKeyboard);
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', updateChatPanelForKeyboard);
+        window.visualViewport.addEventListener('scroll', updateChatPanelForKeyboard);
+    }
+
+    document.addEventListener('focusin', (event) => {
+        if (event.target && event.target.id === 'chat-input') {
+            updateChatPanelForKeyboard();
+        }
+    });
+
+    document.addEventListener('focusout', (event) => {
+        if (event.target && event.target.id === 'chat-input') {
+            setTimeout(updateChatPanelForKeyboard, 60);
+        }
+    });
 
     function showOppChatBubble(message) {
         const bubble = document.getElementById('opp-chat-bubble');
