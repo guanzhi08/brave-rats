@@ -224,6 +224,8 @@
         #matrix-table th { background: rgba(30,40,55,0.95); position: sticky; top: 0; z-index: 2; }
         #matrix-table tr th:first-child { position: sticky; left: 0; top: auto; z-index: 3; background: rgba(30,40,55,0.95); }
         #matrix-table thead tr th:first-child { z-index: 4; top: 0; }
+        #matrix-table tr:first-child th:not(:first-child) { background: rgba(231,76,60,0.82); color: #fff3f1; }
+        #matrix-table tr:not(:first-child) th:first-child { background: rgba(46,204,113,0.82); color: #eafff4; }
         .m-win  { background: rgba(46,204,113,0.82); color: #0a2e18; font-weight: bold; }
         .m-lose { background: rgba(231,76,60,0.82);  color: #2e0808; font-weight: bold; }
         .m-draw { background: rgba(241,196,15,0.82); color: #2e2000; font-weight: bold; }
@@ -269,7 +271,7 @@
         </div>
     </div>
     <div id="step-2" class="room-box" style="display:none">
-        <p id="room-status">等待玩家中...</p>
+        <p style="margin:0 0 10px;"><span id="room-display" style="font-size:1rem; font-weight:700; color:white; letter-spacing:0.1em;"></span><span id="room-status"> 等待玩家中...</span></p>
         <div id="qrcode-container"></div>
     </div>
 </div>
@@ -345,7 +347,7 @@
 <div id="matrix-panel" onclick="closeMatrix()">
     <div id="matrix-box" onclick="event.stopPropagation()">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-            <b style="color:var(--gold)">勝負對照表（列=我方，欄=對方）</b>
+            <b style="color:var(--gold)">勝負對照表</b>
             <button onclick="closeMatrix()" style="background:#555; color:white; padding:8px 12px;">關閉</button>
         </div>
         <div style="font-size:0.78rem; color:#ccc; margin-bottom:8px;">格子內容：獲勝方｜結束比賽 或 暫緩</div>
@@ -770,7 +772,10 @@
         document.getElementById('step-1').style.display = 'none';
         document.getElementById('step-2').style.display = 'block';
         peer.on('open', () => {
-            if(role === 'host') new QRCode(document.getElementById("qrcode-container"), window.location.origin + window.location.pathname + "?room=" + code);
+            if(role === 'host') {
+                document.getElementById('room-display').textContent = '房號：' + code;
+                new QRCode(document.getElementById("qrcode-container"), window.location.origin + window.location.pathname + "?room=" + code);
+            }
             else { conn = peer.connect("rats-fix-" + code + 'A'); setupGame(); }
         });
         peer.on('connection', c => { conn = c; setupGame(); });
