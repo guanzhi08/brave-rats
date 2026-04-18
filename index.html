@@ -456,7 +456,7 @@
 
 <div id="gameover-overlay">
     <div id="gameover-msg"></div>
-    <button onclick="location.reload()" style="font-size:1.1rem; padding:14px 36px; background:var(--gold);">再來一局</button>
+    <button id="rematch-btn" onclick="requestRematch()" style="font-size:1.1rem; padding:14px 36px; background:var(--gold);">再來一局</button>
 </div>
 
 <div id="past-games-panel" onclick="closePastGames()">
@@ -492,6 +492,14 @@
     let roundFirstPlayer = '';
     let effects = { myGen: false, oppGen: false, mySpy: false, oppSpy: false };
     let oppChatTimer = null;
+    let rematch = {
+        myReady: false,
+        oppReady: false,
+        heartbeatTimer: null,
+        startSent: false,
+        started: false,
+        myToken: ''
+    };
 
     function renderHistory() {
         const list = document.getElementById('history-list');
@@ -895,8 +903,150 @@
                 checkReveal();
             } else if (data.type === 'chat') {
                 showOppChatBubble(String(data.message || '').slice(0, 80));
+            } else if (data.type === 'rematch-ready') {
+                handleOppRematchReady();
+            } else if (data.type === 'rematch-sync') {
+                handleOppRematchSync(data);
+            } else if (data.type === 'rematch-start') {
+                handleOppRematchStart();
             }
         });
+        renderHand();
+    }
+
+    function resetRematchState() {
+        if (rematch.heartbeatTimer) {
+            clearInterval(rematch.heartbeatTimer);
+            rematch.heartbeatTimer = null;
+        }
+        rematch.myReady = false;
+        rematch.oppReady = false;
+        rematch.startSent = false;
+        rematch.started = false;
+        rematch.myToken = '';
+    }
+
+    function updateRematchButton(label, disabled) {
+        const btn = document.getElementById('rematch-btn');
+        if (!btn) return;
+        btn.textContent = label;
+        btn.disabled = !!disabled;
+        btn.style.opacity = disabled ? '0.7' : '1';
+        btn.style.cursor = disabled ? 'not-allowed' : 'pointer';
+    }
+
+    function sendRematchReady() {
+        if (!conn || !rematch.myReady) return;
+        conn.send({
+            type: 'rematch-ready',
+            token: rematch.myToken,
+            ts: Date.now()
+        });
+    }
+
+    function sendRematchSync() {
+        if (!conn) return;
+        conn.send({
+            type: 'rematch-sync',
+            myReady: rematch.myReady,
+            oppReadySeen: rematch.oppReady,
+            token: rematch.myToken,
+            ts: Date.now()
+        });
+    }
+
+    function ensureRematchHeartbeat() {
+        if (rematch.heartbeatTimer) return;
+        rematch.heartbeatTimer = setInterval(() => {
+            if (!conn || rematch.started) return;
+            if (rematch.myReady) sendRematchReady();
+            sendRematchSync();
+            tryFinalizeRematch();
+        }, 2200);
+    }
+
+    function handleOppRematchReady() {
+        rematch.oppReady = true;
+        if (!rematch.myReady) {
+            updateRematchButton('對手想再來一局', false);
+            document.getElementById('status-bar').innerText = '對手已按再來一局，點按按鈕即可開始新局';
+        }
+        tryFinalizeRematch();
+    }
+
+    function handleOppRematchSync(data) {
+        if (data && data.myReady) rematch.oppReady = true;
+        if (rematch.myReady && data && data.oppReadySeen === false) {
+            sendRematchReady();
+        }
+        tryFinalizeRematch();
+    }
+
+    function handleOppRematchStart() {
+        if (!rematch.myReady) {
+            updateRematchButton('對手想再來一局', false);
+            document.getElementById('status-bar').innerText = '對手已可開始新局，按再來一局即可同步';
+            return;
+        }
+        rematch.oppReady = true;
+        startRematchIfReady();
+    }
+
+    function tryFinalizeRematch() {
+        if (!rematch.myReady || !rematch.oppReady || rematch.started) return;
+        if (conn && !rematch.startSent) {
+            conn.send({ type: 'rematch-start', ts: Date.now() });
+            rematch.startSent = true;
+        }
+        startRematchIfReady();
+    }
+
+    function startRematchIfReady() {
+        if (!rematch.myReady || !rematch.oppReady || rematch.started) return;
+        rematch.started = true;
+        startNewMatchRound();
+    }
+
+    function requestRematch() {
+        if (rematch.myReady || rematch.started) return;
+        rematch.myReady = true;
+        rematch.myToken = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        updateRematchButton('等待對手...', true);
+        document.getElementById('status-bar').innerText = '已送出再來一局，等待對手確認...';
+        sendRematchReady();
+        sendRematchSync();
+        ensureRematchHeartbeat();
+        tryFinalizeRematch();
+    }
+
+    function startNewMatchRound() {
+        if (rematch.heartbeatTimer) {
+            clearInterval(rematch.heartbeatTimer);
+            rematch.heartbeatTimer = null;
+        }
+
+        myHand = [0, 1, 2, 3, 4, 5, 6, 7];
+        myScore = 0;
+        oppScore = 0;
+        drawPool = 0;
+        roundHistory = [];
+        pendingVal = null;
+        myPlayedVal = null;
+        oppPlayedVal = null;
+        roundFirstPlayer = '';
+        effects = { myGen: false, oppGen: false, mySpy: false, oppSpy: false };
+
+        document.getElementById('gameover-overlay').classList.remove('active');
+        document.getElementById('my-slot').innerHTML = '';
+        document.getElementById('opp-slot').innerHTML = '';
+        document.getElementById('player-score').innerText = '我方: 0';
+        document.getElementById('opp-score').innerText = '對手: 0';
+        document.getElementById('game-status').innerText = '請出牌';
+        document.getElementById('status-bar').innerText = '新局開始';
+        document.getElementById('ability-desc').innerText = '準備對決...';
+
+        resetRematchState();
+        renderHistory();
         renderHand();
     }
 
@@ -1091,6 +1241,9 @@
         const msg = result === 'draw' ? '平手！' : (result === 'win' ? '贏啦！🎉' : '輸了...');
         document.getElementById('gameover-msg').textContent = msg;
         document.getElementById('gameover-overlay').classList.add('active');
+        resetRematchState();
+        updateRematchButton('再來一局', false);
+        document.getElementById('status-bar').innerText = '按「再來一局」與對手同步開新局';
         saveGameRecord(result);
     }
 
