@@ -90,6 +90,16 @@
         .card.finalized.play-up {
             animation: play-up-from-bottom 0.35s cubic-bezier(0.18, 0.88, 0.22, 1.15) forwards;
         }
+        .card.finalized.winner {
+            box-shadow: 0 0 0 2px rgba(255,255,255,0.28), 0 0 20px 3px var(--gold), 0 4px 8px rgba(0,0,0,0.4) !important;
+        }
+
+        /* 先出牌者三角符号 */
+        .card-with-first-badge::after {
+            content: '🔺';
+            position: absolute; top: -8px; right: -8px; font-size: 1.2rem;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+        }
 
         /* 手牌水平滑動區 */
         #hand-wrapper {
@@ -251,6 +261,69 @@
         .card-rule .cr-body { flex: 1; }
         .card-rule .cr-title { font-weight: bold; color: var(--gold); font-size: 0.92rem; }
         .card-rule .cr-desc  { font-size: 0.83rem; color: #ccc; margin-top: 2px; }
+
+        /* 過往紀錄 */
+        #past-games-btn {
+            position: absolute; left: 20px; bottom: 20px; z-index: 2100;
+            background: rgba(255,255,255,0.15); color: white; padding: 10px 16px;
+            font-size: 0.95rem; border-radius: 8px; border: none; cursor: pointer; font-weight: bold;
+        }
+        #past-games-btn:hover { background: rgba(255,255,255,0.25); }
+        #past-games-panel { position: fixed; inset: 0; background: rgba(0,0,0,0.92); z-index: 5000; display: none; }
+        #past-games-panel.active { display: flex; }
+        #past-games-box {
+            margin: auto; width: min(96vw, 520px); max-height: 90vh; overflow-y: auto;
+            background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.25);
+            border-radius: 14px; padding: 16px;
+        }
+        .pg-entry {
+            background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 10px; padding: 12px; margin-bottom: 12px;
+        }
+        .pg-entry:last-child { margin-bottom: 0; }
+        .pg-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 10px; font-size: 0.85rem; color: #bbb;
+        }
+        .pg-result { font-weight: 900; font-size: 1rem; }
+        .pg-result.win { color: #2ecc71; }
+        .pg-result.lose { color: #e74c3c; }
+        .pg-result.draw { color: var(--gold); }
+        .pg-round {
+            display: flex; align-items: center; gap: 8px; padding: 6px 0;
+            border-bottom: 1px dashed rgba(255,255,255,0.08);
+        }
+        .pg-round:last-child { border-bottom: none; }
+        .pg-round-num { font-size: 0.75rem; color: #888; width: 24px; text-align: center; flex-shrink: 0; }
+        .pg-mini-card {
+            width: 48px; height: 68px; border-radius: 6px; background: white; color: #333;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            font-size: 0.65rem; font-weight: bold; flex-shrink: 0;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3); gap: 1px;
+        }
+        .pg-mini-card .mc-name { font-size: 0.55rem; line-height: 1; color: #666; }
+        .pg-mini-card .mc-emoji { font-size: 0.85rem; line-height: 1; }
+        .pg-mini-card .mc-num { font-size: 0.9rem; font-weight: 900; line-height: 1; }
+        .pg-mini-card.red { border: 2px solid var(--red); }
+        .pg-mini-card.blue { border: 2px solid var(--blue); }
+        .pg-mini-card.first-player {
+            position: relative;
+        }
+        .pg-mini-card.first-player::after {
+            content: '🔺';
+            position: absolute; top: -6px; right: -6px; font-size: 0.9rem;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+        }
+        .pg-mini-card.winner {
+            box-shadow: 0 0 0 2px rgba(255,255,255,0.28), 0 0 12px 2px var(--gold), 0 2px 6px rgba(0,0,0,0.3);
+        }
+        .pg-vs { color: #666; font-size: 0.8rem; flex-shrink: 0; }
+        .pg-round-result { font-size: 0.78rem; margin-left: auto; font-weight: bold; flex-shrink: 0; }
+        .pg-round-result.win { color: #2ecc71; }
+        .pg-round-result.lose { color: #e74c3c; }
+        .pg-round-result.draw { color: #999; }
+        .pg-score-line { font-size: 0.82rem; color: #aaa; margin-top: 6px; text-align: right; }
+        .pg-empty { text-align: center; color: #888; padding: 30px 0; font-size: 0.95rem; }
     </style>
 </head>
 <body>
@@ -270,6 +343,7 @@
             <button onclick="initRoom('join')" style="background:white">加入</button>
         </div>
     </div>
+    <button id="past-games-btn" onclick="togglePastGames()">紀錄</button>
     <div id="step-2" class="room-box" style="display:none">
         <p style="margin:0 0 10px;"><span id="room-display" style="font-size:1rem; font-weight:700; color:white; letter-spacing:0.1em;"></span><span id="room-status"> 等待玩家中...</span></p>
         <div id="qrcode-container"></div>
@@ -385,6 +459,16 @@
     <button onclick="location.reload()" style="font-size:1.1rem; padding:14px 36px; background:var(--gold);">再來一局</button>
 </div>
 
+<div id="past-games-panel" onclick="closePastGames()">
+    <div id="past-games-box" onclick="event.stopPropagation()">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <b style="color:var(--gold); font-size:1.1rem;">📋 過往對戰紀錄</b>
+            <button onclick="closePastGames()" style="background:#555; color:white; padding:8px 12px;">關閉</button>
+        </div>
+        <div id="past-games-list"></div>
+    </div>
+</div>
+
 <div id="ability-desc">準備對決...</div>
 <div id="hand-wrapper">
     <div id="hand-container"></div>
@@ -405,6 +489,7 @@
     let myHand = [0, 1, 2, 3, 4, 5, 6, 7], myScore = 0, oppScore = 0, drawPool = 0;
     let roundHistory = [];
     let peer, conn, myColor, role, pendingVal = null, myPlayedVal = null, oppPlayedVal = null;
+    let roundFirstPlayer = '';
     let effects = { myGen: false, oppGen: false, mySpy: false, oppSpy: false };
     let oppChatTimer = null;
 
@@ -805,6 +890,7 @@
         document.getElementById('setup-layer').style.display = 'none';
         conn.on('data', data => {
             if (data.type === 'play') {
+                if (!roundFirstPlayer) roundFirstPlayer = 'opp';
                 oppPlayedVal = data.value;
                 checkReveal();
             } else if (data.type === 'chat') {
@@ -895,6 +981,7 @@
 
     function confirmSelection() {
         myPlayedVal = pendingVal;
+        if (!roundFirstPlayer) roundFirstPlayer = 'my';
         const el = document.getElementById(`card-${myPlayedVal}`);
         
         // 確認出牌後，將選取狀態改為已出牌
@@ -948,13 +1035,6 @@
             else win = (v1 > v2) ? 1 : -1;
         }
 
-        roundHistory.push({
-            my: p1,
-            opp: p2,
-            result: win === 1 ? '我方勝' : (win === -1 ? '對方勝' : '平手')
-        });
-        renderHistory();
-
         const myCard = document.querySelector('#my-slot .card');
         const oppCard = document.querySelector('#opp-slot .card');
         
@@ -974,6 +1054,17 @@
         if (win === 1) { if (p1 === 4 && !p2_ign) pts++; myScore += pts; drawPool = 0; }
         else if (win === -1) { if (p2 === 4 && !p1_ign) pts++; oppScore += pts; drawPool = 0; }
         else drawPool++;
+
+        roundHistory.push({
+            my: p1,
+            opp: p2,
+            result: win === 1 ? '我方勝' : (win === -1 ? '對方勝' : '平手'),
+            firstPlayer: roundFirstPlayer,
+            winner: win === 1 ? 'my' : (win === -1 ? 'opp' : ''),
+            myScore: myScore,
+            oppScore: oppScore
+        });
+        renderHistory();
 
         effects.myGen = (p1 === 6 && !p2_ign); effects.oppGen = (p2 === 6 && !p1_ign);
         const bothSpyActive = (p1 === 2 && !p2_ign) && (p2 === 2 && !p1_ign);
@@ -998,10 +1089,12 @@
         const msg = result === 'draw' ? '平手！' : (result === 'win' ? '贏啦！🎉' : '輸了...');
         document.getElementById('gameover-msg').textContent = msg;
         document.getElementById('gameover-overlay').classList.add('active');
+        saveGameRecord(result);
     }
 
     function nextRound() {
         myPlayedVal = null; oppPlayedVal = null;
+        roundFirstPlayer = '';
         document.getElementById('my-slot').innerHTML = "";
         document.getElementById('opp-slot').innerHTML = "";
         document.getElementById('game-status').innerText = "請出牌";
@@ -1009,6 +1102,75 @@
     }
 
     renderMatrixTable();
+
+    /* === 過往對戰紀錄 === */
+    function saveGameRecord(result) {
+        const record = {
+            date: new Date().toISOString(),
+            result: result,
+            myColor: myColor,
+            myScore: myScore,
+            oppScore: oppScore,
+            rounds: roundHistory.map(r => ({ my: r.my, opp: r.opp, result: r.result, firstPlayer: r.firstPlayer, winner: r.winner, myScore: r.myScore, oppScore: r.oppScore }))
+        };
+        let records = [];
+        try { records = JSON.parse(localStorage.getItem('rats-game-records') || '[]'); } catch(e) {}
+        records.unshift(record);
+        if (records.length > 10) records = records.slice(0, 10);
+        localStorage.setItem('rats-game-records', JSON.stringify(records));
+    }
+
+    function loadGameRecords() {
+        try { return JSON.parse(localStorage.getItem('rats-game-records') || '[]'); } catch(e) { return []; }
+    }
+
+    function renderPastGames() {
+        const list = document.getElementById('past-games-list');
+        const records = loadGameRecords();
+        if (records.length === 0) {
+            list.innerHTML = '<div class="pg-empty">尚無對戰紀錄</div>';
+            return;
+        }
+        list.innerHTML = records.map((rec, gi) => {
+            const d = new Date(rec.date);
+            const dateStr = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+            const rCls = rec.result === 'win' ? 'win' : (rec.result === 'lose' ? 'lose' : 'draw');
+            const rText = rec.result === 'win' ? '勝利' : (rec.result === 'lose' ? '落敗' : '平手');
+            const myC = rec.myColor || 'blue';
+            const oppC = myC === 'blue' ? 'red' : 'blue';
+            const roundsHtml = (rec.rounds || []).map((r, ri) => {
+                const rrCls = r.result === '我方勝' ? 'win' : (r.result === '對方勝' ? 'lose' : 'draw');
+                const rrText = r.result === '我方勝' ? '勝' : (r.result === '對方勝' ? '負' : '平');
+                const myFirstCls = r.firstPlayer === 'my' ? ' first-player' : '';
+                const oppFirstCls = r.firstPlayer === 'opp' ? ' first-player' : '';
+                const myWinnerCls = r.winner === 'my' ? ' winner' : '';
+                const oppWinnerCls = r.winner === 'opp' ? ' winner' : '';
+                return `<div class="pg-round">
+                    <span class="pg-round-num">R${ri+1}</span>
+                    <div class="pg-mini-card ${myC}${myFirstCls}${myWinnerCls}"><span class="mc-name">${CARD_DATA[r.my].name}</span><span class="mc-emoji">${CARD_DATA[r.my].emoji}</span><span class="mc-num">${r.my}</span></div>
+                    <span class="pg-vs">vs</span>
+                    <div class="pg-mini-card ${oppC}${oppFirstCls}${oppWinnerCls}"><span class="mc-name">${CARD_DATA[r.opp].name}</span><span class="mc-emoji">${CARD_DATA[r.opp].emoji}</span><span class="mc-num">${r.opp}</span></div>
+                    <span class="pg-round-result ${rrCls}">${rrText}</span>
+                    <span style="font-size:0.72rem;color:#aaa;width:42px;text-align:right;flex-shrink:0">${r.myScore ?? ''}:${r.oppScore ?? ''}</span>
+                </div>`;
+            }).join('');
+            return `<div class="pg-entry">
+                <div class="pg-header"><span>#${gi+1}　${dateStr}</span><span class="pg-result ${rCls}">${rText}</span></div>
+                ${roundsHtml}
+                <div class="pg-score-line">${rec.myScore || 0} : ${rec.oppScore || 0}</div>
+            </div>`;
+        }).join('');
+    }
+
+    function togglePastGames() {
+        const panel = document.getElementById('past-games-panel');
+        panel.classList.toggle('active');
+        if (panel.classList.contains('active')) renderPastGames();
+    }
+
+    function closePastGames() {
+        document.getElementById('past-games-panel').classList.remove('active');
+    }
 </script>
 </body>
 </html>
