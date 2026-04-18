@@ -908,7 +908,9 @@
         const statusMsgs = [];
         if (effects.oppSpy && myPlayedVal === null) statusMsgs.push(`<span class="spy-alert">⚠️ 被間諜監控中！請先公開出牌</span>`);
         else if (effects.mySpy && oppPlayedVal === null) statusMsgs.push(`<span class="spy-alert">🔍 間諜生效：等對手先翻牌</span>`);
-        else if (effects.myGen) statusMsgs.push("🔥 將軍加成 (+2)");
+        
+        if (effects.myGen) statusMsgs.push("🔥 我方將軍加成 (+2)");
+        if (effects.oppGen) statusMsgs.push("⚔️ 對方將軍加成 (+2)");
 
         if (effects.mySpy && oppPlayedVal !== null) {
             statusMsgs.push(`對手已出【${CARD_DATA[oppPlayedVal].name}】：${CARD_DATA[oppPlayedVal].desc}`);
@@ -1024,7 +1026,7 @@
         const p1_ign = (p1 === 5), p2_ign = (p2 === 5);
 
         let princessMatchWin = 0;
-        if (p1 === p2) win = 0;
+        if (v1 === v2) win = 0;
         else if ((p1 === 0 && !p2_ign) || (p2 === 0 && !p1_ign)) win = 0;
         else if (p1 === 1 && p2 === 7 && !p2_ign) { win = 1; princessMatchWin = 1; }
         else if (p2 === 1 && p1 === 7 && !p1_ign) { win = -1; princessMatchWin = -1; }
@@ -1068,8 +1070,8 @@
 
         effects.myGen = (p1 === 6 && !p2_ign); effects.oppGen = (p2 === 6 && !p1_ign);
         const bothSpyActive = (p1 === 2 && !p2_ign) && (p2 === 2 && !p1_ign);
-        effects.mySpy = (p1 === 2 && !p2_ign) && !bothSpyActive;
-        effects.oppSpy = (p2 === 2 && !p1_ign) && !bothSpyActive;
+        effects.mySpy = (p1 === 2 && !p2_ign && p2 !== 0) && !bothSpyActive;
+        effects.oppSpy = (p2 === 2 && !p1_ign && p1 !== 0) && !bothSpyActive;
 
         setTimeout(() => {
             document.getElementById('player-score').innerText = `我方: ${myScore}`;
