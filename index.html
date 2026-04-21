@@ -269,6 +269,18 @@
             font-size: 0.95rem; border-radius: 8px; border: none; cursor: pointer; font-weight: bold;
         }
         #past-games-btn:hover { background: rgba(255,255,255,0.25); }
+        #ai-mode-btn {
+            position: absolute; right: 20px; bottom: 20px; z-index: 2100;
+            background: rgba(255,255,255,0.15); color: white; padding: 10px 16px;
+            font-size: 0.95rem; border-radius: 8px; border: none; cursor: pointer; font-weight: bold;
+        }
+        #ai-mode-btn:hover { background: rgba(255,255,255,0.25); }
+        .diff-btn {
+            color: white; padding: 14px; font-size: 1rem; font-weight: bold;
+            width: 100%; border-radius: 8px; border: none; cursor: pointer;
+            transition: filter 0.15s;
+        }
+        .diff-btn:hover { filter: brightness(1.15); }
         #past-games-panel { position: fixed; inset: 0; background: rgba(0,0,0,0.92); z-index: 5000; display: none; }
         #past-games-panel.active { display: flex; }
         #past-games-box {
@@ -344,6 +356,16 @@
         </div>
     </div>
     <button id="past-games-btn" onclick="togglePastGames()">紀錄</button>
+    <button id="ai-mode-btn" onclick="showAISetup()">單人</button>
+    <div id="step-ai" class="room-box" style="display:none">
+        <h3 style="color:var(--gold); margin:0 0 16px;">選擇難度</h3>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+            <button onclick="startAIGame('easy')" class="diff-btn" style="background:#27ae60;">😊 簡單</button>
+            <button onclick="startAIGame('medium')" class="diff-btn" style="background:#e67e22;">🤔 中等</button>
+            <button onclick="startAIGame('hard')" class="diff-btn" style="background:#e74c3c;">😈 困難</button>
+        </div>
+        <button onclick="backToSetup()" style="background:rgba(255,255,255,0.15); color:white; margin-top:14px; width:100%; padding:10px; font-size:0.95rem;">← 返回</button>
+    </div>
     <div id="step-2" class="room-box" style="display:none">
         <p style="margin:0 0 10px;"><span id="room-display" style="font-size:1rem; font-weight:700; color:white; letter-spacing:0.1em;"></span><span id="room-status"> 等待玩家中...</span></p>
         <div id="qrcode-container"></div>
@@ -410,9 +432,10 @@
 <div id="history-panel" onclick="closeHistory()">
     <div id="history-box" onclick="event.stopPropagation()">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-            <b style="color:var(--gold)">出牌紀錄</b>
+            <b style="color:var(--gold)">剩餘手牌組合預測</b>
             <button onclick="closeHistory()" style="background:#555; color:white; padding:8px 12px;">關閉</button>
         </div>
+        <div style="font-size:0.78rem; color:#ccc; margin-bottom:8px;">縱軸（綠）：我方剩餘手牌　｜　橫軸（紅）：對方剩餘手牌　｜　格子內容：下局比賽結果比數</div>
         <div id="history-list"></div>
         <div id="history-opp-remain"></div>
     </div>
@@ -489,6 +512,9 @@
     let myHand = [0, 1, 2, 3, 4, 5, 6, 7], myScore = 0, oppScore = 0, drawPool = 0;
     let roundHistory = [];
     let peer, conn, myColor, role, pendingVal = null, myPlayedVal = null, oppPlayedVal = null;
+    let isAIMode = false;
+    let aiHand = [0, 1, 2, 3, 4, 5, 6, 7];
+    let aiDifficulty = 'medium';
     let roundFirstPlayer = '';
     let effects = { myGen: false, oppGen: false, mySpy: false, oppSpy: false };
     let oppChatTimer = null;
@@ -503,28 +529,76 @@
 
     function renderHistory() {
         const list = document.getElementById('history-list');
-        const oppRemain = document.getElementById('history-opp-remain');
         if (!list) return;
 
+        // 計算剩餘手牌
+        const usedMy = new Set(roundHistory.map(r => r.my));
         const usedOpp = new Set(roundHistory.map(r => r.opp));
+        const remainMyCards = [0, 1, 2, 3, 4, 5, 6, 7].filter(v => !usedMy.has(v));
         const remainOppCards = [0, 1, 2, 3, 4, 5, 6, 7].filter(v => !usedOpp.has(v));
-        if (oppRemain) {
-            if (remainOppCards.length === 0) {
-                oppRemain.innerHTML = '<b>對手剩餘手牌：</b><span class="history-remain-cards">無</span>';
-            } else {
-                const labels = remainOppCards.map(v => `${CARD_DATA[v].emoji}${CARD_DATA[v].name}(${v})`).join(' 、 ');
-                oppRemain.innerHTML = `<b>對手剩餘手牌：</b><span class="history-remain-cards">${labels}</span>`;
-            }
-        }
 
-        if (roundHistory.length === 0) {
-            list.innerHTML = '<div style="color:#bbb; text-align:center; padding:14px 0;">目前還沒有回合紀錄</div>';
+        if (remainMyCards.length === 0 && remainOppCards.length === 0) {
+            list.innerHTML = '<div style="color:#bbb; text-align:center; padding:14px 0;">所有手牌已出完</div>';
             return;
         }
-        list.innerHTML = roundHistory.map((r, i) => {
-            const resultClass = r.result === '我方勝' ? 'win' : (r.result === '對方勝' ? 'lose' : '');
-            return `<div class="history-row"><span>R${i + 1}｜我:${CARD_DATA[r.my].name}(${r.my})</span><span>對:${CARD_DATA[r.opp].name}(${r.opp})｜<span class="history-result ${resultClass}">${r.result}</span></span></div>`;
-        }).join('');
+
+        // 生成矩陣
+        let html = '<table style="border-collapse:collapse; width:100%; font-size:0.8rem;">';
+        html += '<tr><th style="background:rgba(30,40,55,0.95); border:1px solid rgba(255,255,255,0.18); padding:6px;">我/對</th>';
+        
+        for (let opp of remainOppCards) {
+            html += `<th style="background:rgba(231,76,60,0.82); color:#fff3f1; border:1px solid rgba(255,255,255,0.18); padding:6px; font-weight:bold;">${opp}</th>`;
+        }
+        html += '</tr>';
+
+        for (let my of remainMyCards) {
+            html += `<tr><th style="background:rgba(46,204,113,0.82); color:#eafff4; border:1px solid rgba(255,255,255,0.18); padding:6px; font-weight:bold;">${my}</th>`;
+            
+            for (let opp of remainOppCards) {
+                const out = getMatrixOutcome(my, opp);
+                let cls = 'm-draw';
+                let textContent = '暫緩';
+                   let isMatchEnd = false;
+                
+                if (out.matchEnd === 1) { 
+                    cls = 'm-win'; 
+                    textContent = `${myScore + (my === 4 ? 2 : 1) + (drawPool || 0)}:${oppScore}`;
+                       isMatchEnd = true;
+                } else if (out.matchEnd === -1) { 
+                    cls = 'm-lose'; 
+                    textContent = `${myScore}:${oppScore + (opp === 4 ? 2 : 1) + (drawPool || 0)}`;
+                       isMatchEnd = true;
+                } else if (out.win === 1) { 
+                       const myFinalScore = myScore + (my === 4 ? 2 : 1) + (drawPool || 0);
+                    cls = 'm-win'; 
+                       textContent = `${myFinalScore}:${oppScore}`;
+                       if (myFinalScore >= 4) isMatchEnd = true;
+                } else if (out.win === -1) { 
+                       const oppFinalScore = oppScore + (opp === 4 ? 2 : 1) + (drawPool || 0);
+                    cls = 'm-lose'; 
+                       textContent = `${myScore}:${oppFinalScore}`;
+                       if (oppFinalScore >= 4) isMatchEnd = true;
+                } else {
+                    textContent = `${myScore}:${oppScore}`;
+                }
+                
+                   const scoreStyle = isMatchEnd ? 'color:white; text-decoration:underline;' : '';
+                   html += `<td class="${cls}" style="border:1px solid rgba(255,255,255,0.18); padding:8px; text-align:center; font-weight:bold;${scoreStyle}">${textContent}</td>`;
+            }
+            html += '</tr>';
+        }
+        html += '</table>';
+        
+        list.innerHTML = html;
+
+        // 顯示剩餘手牌的標示
+        const oppRemain = document.getElementById('history-opp-remain');
+        if (oppRemain) {
+            let remainText = '<b style="color:#f79f1a;">剩餘手牌組合預測</b><br>';
+            remainText += `<span style="color:#aaa; font-size:0.85rem;">我方剩餘：${remainMyCards.map(v => `${CARD_DATA[v].emoji}${v}`).join(' ')}</span><br>`;
+            remainText += `<span style="color:#aaa; font-size:0.85rem;">對方剩餘：${remainOppCards.map(v => `${CARD_DATA[v].emoji}${v}`).join(' ')}</span>`;
+            oppRemain.innerHTML = remainText;
+        }
     }
 
     function toggleHistory() {
@@ -844,15 +918,14 @@
     function sendChatMessage() {
         const input = document.getElementById('chat-input');
         const message = input.value.trim().slice(0, 80);
-        if (!message || !conn) return;
-        conn.send({ type: 'chat', message });
+        if (!message) return;
+        if (!isAIMode && conn) conn.send({ type: 'chat', message });
         input.value = '';
         closeChatPanel();
     }
 
     function sendPresetMessage(message) {
-        if (!conn) return;
-        conn.send({ type: 'chat', message });
+        if (!isAIMode && conn) conn.send({ type: 'chat', message });
         closeChatPanel();
     }
 
@@ -1008,6 +1081,7 @@
     }
 
     function requestRematch() {
+        if (isAIMode) { startAINewMatch(); return; }
         if (rematch.myReady || rematch.started) return;
         rematch.myReady = true;
         rematch.myToken = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -1144,10 +1218,19 @@
         
         myHand = myHand.filter(v => v !== myPlayedVal);
         document.getElementById('action-overlay').classList.remove('active');
-        conn.send({ type: 'play', value: myPlayedVal });
-        pendingVal = null;
-        checkReveal();
-        renderHand();
+        if (isAIMode) {
+            pendingVal = null;
+            checkReveal();
+            renderHand();
+            if (oppPlayedVal === null) {
+                setTimeout(() => aiPlayCard(), 700 + Math.random() * 500);
+            }
+        } else {
+            conn.send({ type: 'play', value: myPlayedVal });
+            pendingVal = null;
+            checkReveal();
+            renderHand();
+        }
     }
 
     function checkReveal() {
@@ -1241,9 +1324,18 @@
         const msg = result === 'draw' ? '平手！' : (result === 'win' ? '贏啦！🎉' : '輸了...');
         document.getElementById('gameover-msg').textContent = msg;
         document.getElementById('gameover-overlay').classList.add('active');
-        resetRematchState();
-        updateRematchButton('再來一局', false);
-        document.getElementById('status-bar').innerText = '按「再來一局」與對手同步開新局';
+        if (isAIMode) {
+            const btn = document.getElementById('rematch-btn');
+            btn.textContent = '再來一局';
+            btn.disabled = false;
+            btn.style.opacity = '1';
+            btn.style.cursor = 'pointer';
+            document.getElementById('status-bar').innerText = '按「再來一局」開始新局';
+        } else {
+            resetRematchState();
+            updateRematchButton('再來一局', false);
+            document.getElementById('status-bar').innerText = '按「再來一局」與對手同步開新局';
+        }
         saveGameRecord(result);
     }
 
@@ -1254,6 +1346,9 @@
         document.getElementById('opp-slot').innerHTML = "";
         document.getElementById('game-status').innerText = "請出牌";
         renderHand();
+        if (isAIMode && effects.mySpy) {
+            setTimeout(() => aiPlayFirst(), 600);
+        }
     }
 
     renderMatrixTable();
@@ -1325,6 +1420,144 @@
 
     function closePastGames() {
         document.getElementById('past-games-panel').classList.remove('active');
+    }
+
+    // === AI 模式 ===
+    function showAISetup() {
+        document.getElementById('step-1').style.display = 'none';
+        document.getElementById('step-ai').style.display = 'block';
+    }
+
+    function backToSetup() {
+        document.getElementById('step-ai').style.display = 'none';
+        document.getElementById('step-1').style.display = 'block';
+    }
+
+    function startAIGame(difficulty = 'medium') {
+        aiDifficulty = difficulty;
+        isAIMode = true;
+        myColor = 'blue';
+        aiHand = [0, 1, 2, 3, 4, 5, 6, 7];
+        document.getElementById('setup-layer').style.display = 'none';
+        document.getElementById('step-ai').style.display = 'none';
+        document.getElementById('step-1').style.display = 'block';
+        const label = { easy: '簡單', medium: '中等', hard: '困難' }[difficulty];
+        document.getElementById('game-status').innerText = '請出牌';
+        document.getElementById('status-bar').innerText = `🤖 AI 對戰（${label}）`;
+        renderHand();
+    }
+
+    function startAINewMatch() {
+        aiHand = [0, 1, 2, 3, 4, 5, 6, 7];
+        myHand = [0, 1, 2, 3, 4, 5, 6, 7];
+        myScore = 0; oppScore = 0; drawPool = 0;
+        roundHistory = [];
+        pendingVal = null; myPlayedVal = null; oppPlayedVal = null;
+        roundFirstPlayer = '';
+        effects = { myGen: false, oppGen: false, mySpy: false, oppSpy: false };
+
+        const label = { easy: '簡單', medium: '中等', hard: '困難' }[aiDifficulty];
+        document.getElementById('gameover-overlay').classList.remove('active');
+        document.getElementById('my-slot').innerHTML = '';
+        document.getElementById('opp-slot').innerHTML = '';
+        document.getElementById('player-score').innerText = '我方: 0';
+        document.getElementById('opp-score').innerText = '對手: 0';
+        document.getElementById('game-status').innerText = '請出牌';
+        document.getElementById('status-bar').innerText = `🤖 AI 對戰（${label}）`;
+        document.getElementById('ability-desc').innerText = '準備對決...';
+        renderHistory();
+        renderHand();
+    }
+
+    function simulateBattleWin(playerCard, aiCard) {
+        const v1 = playerCard + (effects.myGen ? 2 : 0);
+        const v2 = aiCard + (effects.oppGen ? 2 : 0);
+        const p1_ign = (playerCard === 5), p2_ign = (aiCard === 5);
+        let win = 0, matchEnd = 0;
+        if ((playerCard === 0 && !p2_ign) || (aiCard === 0 && !p1_ign)) win = 0;
+        else if (playerCard === 1 && aiCard === 7 && !p2_ign) { win = 1; matchEnd = 1; }
+        else if (aiCard === 1 && playerCard === 7 && !p1_ign) { win = -1; matchEnd = -1; }
+        else {
+            const smallWin = (playerCard === 3 && !p2_ign) || (aiCard === 3 && !p1_ign);
+            if (v1 === v2) win = 0;
+            else if (smallWin) win = (v1 < v2) ? 1 : -1;
+            else win = (v1 > v2) ? 1 : -1;
+        }
+        return { win, matchEnd };
+    }
+
+    function getAICounterCard(playerCard) {
+        const isHard = aiDifficulty === 'hard';
+        let bestCard = null, bestScore = -Infinity;
+        for (const aiCard of aiHand) {
+            const result = isHard ? simulateBattleWin(playerCard, aiCard) : getMatrixOutcome(playerCard, aiCard);
+            let score = 0;
+            if (result.matchEnd === -1) score = 200;
+            else if (result.matchEnd === 1) score = -200;
+            else if (result.win === -1) score = aiCard === 4 ? 25 : 10;
+            else if (result.win === 0) score = 1;
+            else score = -10;
+            if (score > bestScore) { bestScore = score; bestCard = aiCard; }
+        }
+        return bestCard ?? aiHand[0];
+    }
+
+    function getAIStrategicCard() {
+        const scoreDiff = oppScore - myScore;
+        const isHard = aiDifficulty === 'hard';
+        let bestCard = null, bestScore = -Infinity;
+        for (const aiCard of aiHand) {
+            let cardScore = 0;
+            for (const playerCard of myHand) {
+                const result = isHard ? simulateBattleWin(playerCard, aiCard) : getMatrixOutcome(playerCard, aiCard);
+                if (result.matchEnd === -1) cardScore += 30;
+                else if (result.matchEnd === 1) cardScore -= 30;
+                else if (result.win === -1) cardScore += aiCard === 4 ? 3 : 2;
+                else if (result.win === 0) cardScore += 0.5;
+                else cardScore -= 2;
+            }
+            if (aiCard === 6 && aiHand.includes(7) && aiHand.length > 3) cardScore += 3;
+            if (aiCard === 2 && scoreDiff < 0 && aiHand.length > 3) cardScore += 4;
+            if (aiCard === 5 && myHand.includes(3) && aiHand.length > 2) cardScore += 3;
+            if (isHard) {
+                if (aiCard === 1 && myHand.includes(7) && aiHand.length > 3) cardScore -= 6;
+                if (aiCard === 4 && scoreDiff >= 0) cardScore += 2;
+                if (aiCard === 5 && effects.myGen) cardScore += 5;
+            }
+            if (cardScore > bestScore) { bestScore = cardScore; bestCard = aiCard; }
+        }
+        return bestCard ?? aiHand[Math.floor(Math.random() * aiHand.length)];
+    }
+
+    function aiSelectCard(knownPlayerCard = null) {
+        if (aiDifficulty === 'easy') {
+            if (Math.random() < 0.55) return aiHand[Math.floor(Math.random() * aiHand.length)];
+            return getAIStrategicCard();
+        }
+        if (knownPlayerCard !== null) return getAICounterCard(knownPlayerCard);
+        if (aiDifficulty === 'medium' && Math.random() < 0.2) return aiHand[Math.floor(Math.random() * aiHand.length)];
+        return getAIStrategicCard();
+    }
+
+    function aiPlayFirst() {
+        if (aiHand.length === 0) return;
+        const aiCard = getAIStrategicCard();
+        oppPlayedVal = aiCard;
+        if (!roundFirstPlayer) roundFirstPlayer = 'opp';
+        aiHand = aiHand.filter(v => v !== aiCard);
+        const oppColor = myColor === 'red' ? 'blue' : 'red';
+        document.getElementById('opp-slot').innerHTML =
+            `<div class="card ${oppColor}"><div class="name">${CARD_DATA[aiCard].name}</div><div class="emoji">${CARD_DATA[aiCard].emoji}</div><div class="num">${aiCard}</div></div>`;
+        renderHand();
+    }
+
+    function aiPlayCard() {
+        if (aiHand.length === 0) return;
+        const aiCard = aiSelectCard(effects.oppSpy ? myPlayedVal : null);
+        if (!roundFirstPlayer) roundFirstPlayer = 'opp';
+        oppPlayedVal = aiCard;
+        aiHand = aiHand.filter(v => v !== aiCard);
+        checkReveal();
     }
 </script>
 </body>
