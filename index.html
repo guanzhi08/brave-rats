@@ -410,9 +410,10 @@
 <div id="history-panel" onclick="closeHistory()">
     <div id="history-box" onclick="event.stopPropagation()">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-            <b style="color:var(--gold)">出牌紀錄</b>
+            <b style="color:var(--gold)">剩餘手牌組合預測</b>
             <button onclick="closeHistory()" style="background:#555; color:white; padding:8px 12px;">關閉</button>
         </div>
+        <div style="font-size:0.78rem; color:#ccc; margin-bottom:8px;">縱軸（綠）：我方剩餘手牌　｜　橫軸（紅）：對方剩餘手牌　｜　格子內容：下局比賽結果比數</div>
         <div id="history-list"></div>
         <div id="history-opp-remain"></div>
     </div>
@@ -503,28 +504,76 @@
 
     function renderHistory() {
         const list = document.getElementById('history-list');
-        const oppRemain = document.getElementById('history-opp-remain');
         if (!list) return;
 
+        // 計算剩餘手牌
+        const usedMy = new Set(roundHistory.map(r => r.my));
         const usedOpp = new Set(roundHistory.map(r => r.opp));
+        const remainMyCards = [0, 1, 2, 3, 4, 5, 6, 7].filter(v => !usedMy.has(v));
         const remainOppCards = [0, 1, 2, 3, 4, 5, 6, 7].filter(v => !usedOpp.has(v));
-        if (oppRemain) {
-            if (remainOppCards.length === 0) {
-                oppRemain.innerHTML = '<b>對手剩餘手牌：</b><span class="history-remain-cards">無</span>';
-            } else {
-                const labels = remainOppCards.map(v => `${CARD_DATA[v].emoji}${CARD_DATA[v].name}(${v})`).join(' 、 ');
-                oppRemain.innerHTML = `<b>對手剩餘手牌：</b><span class="history-remain-cards">${labels}</span>`;
-            }
-        }
 
-        if (roundHistory.length === 0) {
-            list.innerHTML = '<div style="color:#bbb; text-align:center; padding:14px 0;">目前還沒有回合紀錄</div>';
+        if (remainMyCards.length === 0 && remainOppCards.length === 0) {
+            list.innerHTML = '<div style="color:#bbb; text-align:center; padding:14px 0;">所有手牌已出完</div>';
             return;
         }
-        list.innerHTML = roundHistory.map((r, i) => {
-            const resultClass = r.result === '我方勝' ? 'win' : (r.result === '對方勝' ? 'lose' : '');
-            return `<div class="history-row"><span>R${i + 1}｜我:${CARD_DATA[r.my].name}(${r.my})</span><span>對:${CARD_DATA[r.opp].name}(${r.opp})｜<span class="history-result ${resultClass}">${r.result}</span></span></div>`;
-        }).join('');
+
+        // 生成矩陣
+        let html = '<table style="border-collapse:collapse; width:100%; font-size:0.8rem;">';
+        html += '<tr><th style="background:rgba(30,40,55,0.95); border:1px solid rgba(255,255,255,0.18); padding:6px;">我/對</th>';
+        
+        for (let opp of remainOppCards) {
+            html += `<th style="background:rgba(231,76,60,0.82); color:#fff3f1; border:1px solid rgba(255,255,255,0.18); padding:6px; font-weight:bold;">${opp}</th>`;
+        }
+        html += '</tr>';
+
+        for (let my of remainMyCards) {
+            html += `<tr><th style="background:rgba(46,204,113,0.82); color:#eafff4; border:1px solid rgba(255,255,255,0.18); padding:6px; font-weight:bold;">${my}</th>`;
+            
+            for (let opp of remainOppCards) {
+                const out = getMatrixOutcome(my, opp);
+                let cls = 'm-draw';
+                let textContent = '暫緩';
+                   let isMatchEnd = false;
+                
+                if (out.matchEnd === 1) { 
+                    cls = 'm-win'; 
+                    textContent = `${myScore + (my === 4 ? 2 : 1) + (drawPool || 0)}:${oppScore}`;
+                       isMatchEnd = true;
+                } else if (out.matchEnd === -1) { 
+                    cls = 'm-lose'; 
+                    textContent = `${myScore}:${oppScore + (opp === 4 ? 2 : 1) + (drawPool || 0)}`;
+                       isMatchEnd = true;
+                } else if (out.win === 1) { 
+                       const myFinalScore = myScore + (my === 4 ? 2 : 1) + (drawPool || 0);
+                    cls = 'm-win'; 
+                       textContent = `${myFinalScore}:${oppScore}`;
+                       if (myFinalScore >= 4) isMatchEnd = true;
+                } else if (out.win === -1) { 
+                       const oppFinalScore = oppScore + (opp === 4 ? 2 : 1) + (drawPool || 0);
+                    cls = 'm-lose'; 
+                       textContent = `${myScore}:${oppFinalScore}`;
+                       if (oppFinalScore >= 4) isMatchEnd = true;
+                } else {
+                    textContent = `${myScore}:${oppScore}`;
+                }
+                
+                   const scoreStyle = isMatchEnd ? 'color:white; text-decoration:underline;' : '';
+                   html += `<td class="${cls}" style="border:1px solid rgba(255,255,255,0.18); padding:8px; text-align:center; font-weight:bold;${scoreStyle}">${textContent}</td>`;
+            }
+            html += '</tr>';
+        }
+        html += '</table>';
+        
+        list.innerHTML = html;
+
+        // 顯示剩餘手牌的標示
+        const oppRemain = document.getElementById('history-opp-remain');
+        if (oppRemain) {
+            let remainText = '<b style="color:#f79f1a;">剩餘手牌組合預測</b><br>';
+            remainText += `<span style="color:#aaa; font-size:0.85rem;">我方剩餘：${remainMyCards.map(v => `${CARD_DATA[v].emoji}${v}`).join(' ')}</span><br>`;
+            remainText += `<span style="color:#aaa; font-size:0.85rem;">對方剩餘：${remainOppCards.map(v => `${CARD_DATA[v].emoji}${v}`).join(' ')}</span>`;
+            oppRemain.innerHTML = remainText;
+        }
     }
 
     function toggleHistory() {
