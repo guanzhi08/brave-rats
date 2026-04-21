@@ -363,6 +363,7 @@
             <button onclick="startAIGame('easy')" class="diff-btn" style="background:#27ae60;">😊 簡單</button>
             <button onclick="startAIGame('medium')" class="diff-btn" style="background:#e67e22;">🤔 中等</button>
             <button onclick="startAIGame('hard')" class="diff-btn" style="background:#e74c3c;">😈 困難</button>
+            <button onclick="startAIGame('king')" class="diff-btn" style="background:linear-gradient(135deg,#8e44ad,#2c3e50); border:2px solid var(--gold);">👑 國王</button>
         </div>
         <button onclick="backToSetup()" style="background:rgba(255,255,255,0.15); color:white; margin-top:14px; width:100%; padding:10px; font-size:0.95rem;">← 返回</button>
     </div>
@@ -1441,7 +1442,7 @@
         document.getElementById('setup-layer').style.display = 'none';
         document.getElementById('step-ai').style.display = 'none';
         document.getElementById('step-1').style.display = 'block';
-        const label = { easy: '簡單', medium: '中等', hard: '困難' }[difficulty];
+        const label = { easy: '簡單', medium: '中等', hard: '困難', king: '國王' }[difficulty];
         document.getElementById('game-status').innerText = '請出牌';
         document.getElementById('status-bar').innerText = `🤖 AI 對戰（${label}）`;
         renderHand();
@@ -1487,16 +1488,21 @@
     }
 
     function getAICounterCard(playerCard) {
-        const isHard = aiDifficulty === 'hard';
+        const useSimulate = aiDifficulty === 'hard' || aiDifficulty === 'king';
+        const ptsAtStake = 1 + drawPool;
         let bestCard = null, bestScore = -Infinity;
         for (const aiCard of aiHand) {
-            const result = isHard ? simulateBattleWin(playerCard, aiCard) : getMatrixOutcome(playerCard, aiCard);
+            const result = useSimulate ? simulateBattleWin(playerCard, aiCard) : getMatrixOutcome(playerCard, aiCard);
+            const winPts = ptsAtStake + (aiCard === 4 ? 1 : 0);
+            const losePts = ptsAtStake + (playerCard === 4 ? 1 : 0);
+            const aiEnds = result.matchEnd === -1 || (result.win === -1 && oppScore + winPts >= 4);
+            const playerEnds = result.matchEnd === 1 || (result.win === 1 && myScore + losePts >= 4);
             let score = 0;
-            if (result.matchEnd === -1) score = 200;
-            else if (result.matchEnd === 1) score = -200;
-            else if (result.win === -1) score = aiCard === 4 ? 25 : 10;
-            else if (result.win === 0) score = 1;
-            else score = -10;
+            if (aiEnds) score = 200;
+            else if (playerEnds) score = -200;
+            else if (result.win === -1) score = winPts * (aiCard === 4 ? 12 : 8);
+            else if (result.win === 0) score = myScore >= 3 ? 15 : 1;
+            else score = -losePts * 8;
             if (score > bestScore) { bestScore = score; bestCard = aiCard; }
         }
         return bestCard ?? aiHand[0];
@@ -1504,17 +1510,22 @@
 
     function getAIStrategicCard() {
         const scoreDiff = oppScore - myScore;
-        const isHard = aiDifficulty === 'hard';
+        const isHard = aiDifficulty === 'hard' || aiDifficulty === 'king';
+        const ptsAtStake = 1 + drawPool;
         let bestCard = null, bestScore = -Infinity;
         for (const aiCard of aiHand) {
             let cardScore = 0;
             for (const playerCard of myHand) {
                 const result = isHard ? simulateBattleWin(playerCard, aiCard) : getMatrixOutcome(playerCard, aiCard);
-                if (result.matchEnd === -1) cardScore += 30;
-                else if (result.matchEnd === 1) cardScore -= 30;
-                else if (result.win === -1) cardScore += aiCard === 4 ? 3 : 2;
-                else if (result.win === 0) cardScore += 0.5;
-                else cardScore -= 2;
+                const winPts = ptsAtStake + (aiCard === 4 ? 1 : 0);
+                const losePts = ptsAtStake + (playerCard === 4 ? 1 : 0);
+                const aiEnds = result.matchEnd === -1 || (result.win === -1 && oppScore + winPts >= 4);
+                const playerEnds = result.matchEnd === 1 || (result.win === 1 && myScore + losePts >= 4);
+                if (aiEnds) cardScore += 30;
+                else if (playerEnds) cardScore -= 30;
+                else if (result.win === -1) cardScore += winPts;
+                else if (result.win === 0) cardScore += (myScore >= 3 ? 2 : 0.5);
+                else cardScore -= losePts;
             }
             if (aiCard === 6 && aiHand.includes(7) && aiHand.length > 3) cardScore += 3;
             if (aiCard === 2 && scoreDiff < 0 && aiHand.length > 3) cardScore += 4;
@@ -1529,10 +1540,74 @@
         return bestCard ?? aiHand[Math.floor(Math.random() * aiHand.length)];
     }
 
+    // 評估盤面對 AI 的優勢值（正值=AI 有利）
+    function evalGameState(pScore, aScore, pool, playerHand, aiHandArr) {
+        if (aScore >= 4) return 10000;
+        if (pScore >= 4) return -10000;
+        if (playerHand.length === 0) {
+            if (aScore > pScore) return 5000;
+            if (pScore > aScore) return -5000;
+            return 0;
+        }
+        // 分差（局面越後期權重越高）
+        const progress = (8 - playerHand.length) / 8;
+        let v = (aScore - pScore) * 150 * (1 + progress);
+        // 計算牌面勝率
+        let wins = 0;
+        for (const ac of aiHandArr) for (const pc of playerHand) {
+            const r = getMatrixOutcome(pc, ac);
+            if (r.win === -1) wins++;
+            else if (r.win === 1) wins--;
+        }
+        v += wins * 12;
+        // 懸賞池：根據牌面勝率判斷對誰有利
+        const total = aiHandArr.length * playerHand.length || 1;
+        v += pool * (wins / total) * 80;
+        // 公主留底加分
+        if (aiHandArr.includes(1) && playerHand.includes(7)) v += 25;
+        if (playerHand.includes(1) && aiHandArr.includes(7)) v -= 20;
+        return v;
+    }
+
+    // 國王級：對每張牌模擬所有玩家可能的應對，取期望值最高的牌
+    function getKingAICard() {
+        let bestCard = null, bestScore = -Infinity;
+        for (const aiCard of aiHand) {
+            let total = 0;
+            for (const playerCard of myHand) {
+                const result = simulateBattleWin(playerCard, aiCard);
+                const ptsBase = 1 + drawPool;
+                // 公主直殺
+                if (result.matchEnd === 1)  { total -= 10000; continue; }
+                if (result.matchEnd === -1) { total += 10000; continue; }
+                let newPS = myScore, newAS = oppScore, newDP = drawPool;
+                if (result.win === 1) {
+                    newPS += ptsBase + (playerCard === 4 ? 1 : 0); newDP = 0;
+                } else if (result.win === -1) {
+                    newAS += ptsBase + (aiCard === 4 ? 1 : 0); newDP = 0;
+                } else {
+                    newDP++;
+                }
+                if (newPS >= 4) { total -= 10000; continue; }
+                if (newAS >= 4) { total += 10000; continue; }
+                const newPH = myHand.filter(c => c !== playerCard);
+                const newAH = aiHand.filter(c => c !== aiCard);
+                total += evalGameState(newPS, newAS, newDP, newPH, newAH);
+            }
+            const avg = total / myHand.length;
+            if (avg > bestScore) { bestScore = avg; bestCard = aiCard; }
+        }
+        return bestCard ?? aiHand[0];
+    }
+
     function aiSelectCard(knownPlayerCard = null) {
         if (aiDifficulty === 'easy') {
             if (Math.random() < 0.55) return aiHand[Math.floor(Math.random() * aiHand.length)];
             return getAIStrategicCard();
+        }
+        if (aiDifficulty === 'king') {
+            if (knownPlayerCard !== null) return getAICounterCard(knownPlayerCard);
+            return getKingAICard();
         }
         if (knownPlayerCard !== null) return getAICounterCard(knownPlayerCard);
         if (aiDifficulty === 'medium' && Math.random() < 0.2) return aiHand[Math.floor(Math.random() * aiHand.length)];
@@ -1541,7 +1616,7 @@
 
     function aiPlayFirst() {
         if (aiHand.length === 0) return;
-        const aiCard = getAIStrategicCard();
+        const aiCard = aiDifficulty === 'king' ? getKingAICard() : getAIStrategicCard();
         oppPlayedVal = aiCard;
         if (!roundFirstPlayer) roundFirstPlayer = 'opp';
         aiHand = aiHand.filter(v => v !== aiCard);
