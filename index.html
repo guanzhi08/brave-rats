@@ -1515,14 +1515,16 @@
         let bestCard = null, bestScore = -Infinity;
         for (const aiCard of aiHand) {
             let cardScore = 0;
+            // matchEnd（公主殺王子）機率 = 1/N，以此縮放避免開局偏向公主
+            const matchEndBonus = Math.max(1, Math.round(30 / myHand.length));
             for (const playerCard of myHand) {
                 const result = isHard ? simulateBattleWin(playerCard, aiCard) : getMatrixOutcome(playerCard, aiCard);
                 const winPts = ptsAtStake + (aiCard === 4 ? 1 : 0);
                 const losePts = ptsAtStake + (playerCard === 4 ? 1 : 0);
-                const aiEnds = result.matchEnd === -1 || (result.win === -1 && oppScore + winPts >= 4);
-                const playerEnds = result.matchEnd === 1 || (result.win === 1 && myScore + losePts >= 4);
-                if (aiEnds) cardScore += 30;
-                else if (playerEnds) cardScore -= 30;
+                if (result.matchEnd === -1) cardScore += matchEndBonus;
+                else if (result.matchEnd === 1) cardScore -= matchEndBonus;
+                else if (result.win === -1 && oppScore + winPts >= 4) cardScore += 30;
+                else if (result.win === 1 && myScore + losePts >= 4) cardScore -= 30;
                 else if (result.win === -1) cardScore += winPts;
                 else if (result.win === 0) cardScore += (myScore >= 3 ? 2 : 0.5);
                 else cardScore -= losePts;
@@ -1531,7 +1533,6 @@
             if (aiCard === 2 && scoreDiff < 0 && aiHand.length > 3) cardScore += 4;
             if (aiCard === 5 && myHand.includes(3) && aiHand.length > 2) cardScore += 3;
             if (isHard) {
-                if (aiCard === 1 && myHand.includes(7) && aiHand.length > 3) cardScore -= 6;
                 if (aiCard === 4 && scoreDiff >= 0) cardScore += 2;
                 if (aiCard === 5 && effects.myGen) cardScore += 5;
             }
@@ -1577,9 +1578,9 @@
             for (const playerCard of myHand) {
                 const result = simulateBattleWin(playerCard, aiCard);
                 const ptsBase = 1 + drawPool;
-                // 公主直殺
-                if (result.matchEnd === 1)  { total -= 10000; continue; }
-                if (result.matchEnd === -1) { total += 10000; continue; }
+                // matchEnd（公主殺王子）縮放至與 evalGameState 同量級
+                if (result.matchEnd === 1)  { total -= 1500; continue; }
+                if (result.matchEnd === -1) { total += 1500; continue; }
                 let newPS = myScore, newAS = oppScore, newDP = drawPool;
                 if (result.win === 1) {
                     newPS += ptsBase + (playerCard === 4 ? 1 : 0); newDP = 0;
