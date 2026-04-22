@@ -336,6 +336,18 @@
         .pg-round-result.draw { color: #999; }
         .pg-score-line { font-size: 0.82rem; color: #aaa; margin-top: 6px; text-align: right; }
         .pg-empty { text-align: center; color: #888; padding: 30px 0; font-size: 0.95rem; }
+        /* 對手資訊列 */
+        .pg-header { margin-bottom: 4px !important; }
+        .pg-opp-row { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; min-height: 22px; }
+        .pg-ai-badge { display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: bold; }
+        .pg-ai-badge.easy   { background: rgba(39,174,96,0.2);  color: #2ecc71; }
+        .pg-ai-badge.medium { background: rgba(230,126,34,0.2); color: #e8983a; }
+        .pg-ai-badge.hard   { background: rgba(231,76,60,0.2);  color: #e74c3c; }
+        .pg-ai-badge.king   { background: rgba(142,68,173,0.2); color: #bb8fff; }
+        .pg-opp-name-wrap { display: flex; align-items: center; gap: 4px; font-size: 0.8rem; color: #bbb; }
+        .pg-edit-btn { background: none; border: none; color: #666; cursor: pointer; font-size: 0.78rem; padding: 0 2px; line-height: 1; }
+        .pg-edit-btn:hover { color: var(--gold); }
+        .pg-name-input { background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; color: white; font-size: 0.8rem; padding: 2px 6px; width: 120px; outline: none; }
     </style>
 </head>
 <body>
@@ -1379,6 +1391,9 @@
             myColor: myColor,
             myScore: myScore,
             oppScore: oppScore,
+            isAI: isAIMode,
+            aiDiff: isAIMode ? aiDifficulty : null,
+            oppName: '',
             rounds: roundHistory.map(r => ({ my: r.my, opp: r.opp, result: r.result, firstPlayer: r.firstPlayer, winner: r.winner, myScore: r.myScore, oppScore: r.oppScore }))
         };
         let records = [];
@@ -1399,6 +1414,7 @@
             list.innerHTML = '<div class="pg-empty">尚無對戰紀錄</div>';
             return;
         }
+        const aiDiffLabel = { easy: '😊 簡單', medium: '🤔 中等', hard: '😈 困難', king: '👑 國王' };
         list.innerHTML = records.map((rec, gi) => {
             const d = new Date(rec.date);
             const dateStr = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
@@ -1406,6 +1422,10 @@
             const rText = rec.result === 'win' ? '勝利' : (rec.result === 'lose' ? '落敗' : '平手');
             const myC = rec.myColor || 'blue';
             const oppC = myC === 'blue' ? 'red' : 'blue';
+            const diff = rec.aiDiff || 'medium';
+            const oppRow = rec.isAI
+                ? `<div class="pg-opp-row"><span class="pg-ai-badge ${diff}">🤖 AI・${aiDiffLabel[diff] || diff}</span></div>`
+                : `<div class="pg-opp-row" id="pg-opp-row-${gi}"><div class="pg-opp-name-wrap"><span>👤</span><span id="pg-opp-name-${gi}">${rec.oppName || '對手'}</span><button class="pg-edit-btn" onclick="editOppName(${gi})" title="編輯對手名稱">✏️</button></div></div>`;
             const roundsHtml = (rec.rounds || []).map((r, ri) => {
                 const rrCls = r.result === '我方勝' ? 'win' : (r.result === '對方勝' ? 'lose' : 'draw');
                 const rrText = r.result === '我方勝' ? '勝' : (r.result === '對方勝' ? '負' : '平');
@@ -1424,6 +1444,7 @@
             }).join('');
             return `<div class="pg-entry">
                 <div class="pg-header"><span>#${gi+1}　${dateStr}</span><span class="pg-result ${rCls}">${rText}</span></div>
+                ${oppRow}
                 ${roundsHtml}
                 <div class="pg-score-line">${rec.myScore || 0} : ${rec.oppScore || 0}</div>
             </div>`;
@@ -1438,6 +1459,41 @@
 
     function closePastGames() {
         document.getElementById('past-games-panel').classList.remove('active');
+    }
+
+    function editOppName(gi) {
+        const nameEl = document.getElementById('pg-opp-name-' + gi);
+        if (!nameEl) return;
+        const editBtn = nameEl.nextElementSibling;
+        const currentName = nameEl.textContent === '對手' ? '' : nameEl.textContent;
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'pg-name-input';
+        input.value = currentName;
+        input.maxLength = 20;
+        input.placeholder = '對手名稱';
+        nameEl.style.display = 'none';
+        if (editBtn) editBtn.style.display = 'none';
+        nameEl.parentNode.insertBefore(input, nameEl.nextSibling);
+        input.focus();
+        input.select();
+        let committed = false;
+        function commit() {
+            if (committed) return;
+            committed = true;
+            saveOppName(gi, input.value.trim().slice(0, 20));
+        }
+        input.addEventListener('blur', commit);
+        input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); if (e.key === 'Escape') { committed = true; nameEl.style.display = ''; if (editBtn) editBtn.style.display = ''; input.remove(); } });
+    }
+
+    function saveOppName(gi, val) {
+        const records = loadGameRecords();
+        if (records[gi] !== undefined) {
+            records[gi].oppName = val;
+            localStorage.setItem('rats-game-records', JSON.stringify(records));
+        }
+        renderPastGames();
     }
 
     // === AI 模式 ===
